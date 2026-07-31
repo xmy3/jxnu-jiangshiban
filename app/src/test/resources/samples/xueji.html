@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>培养方案与毕业审核</title></head>
+<body>
+  <!-- 顶部信息区：GraduationAuditPage 用 id$=_lblInfor 后缀匹配，正则从该 span 的 text 里抽出
+       毕业最低学分 / 当前学分 / 加权平均标准分 / 学位课程数 / 重修门次。
+       内嵌的 div.button 是 creditSummaries（学分模块小卡片）。 -->
+  <span id="_ctl1_lblInfor">
+    毕业最低学分: 172
+    当前所修学分总数：29
+    加权平均标准分: 0.46591036
+    专业学位课程总数为: 6 门
+    重修学位课程门次为: 0 门
+    <div class="button bg-red">公共必修: 13</div>
+    <div class="button bg-red">学科基础: 0</div>
+    <div class="button bg-red">专业必修: 0</div>
+    <div class="button">专业限选: 0</div>
+    <div class="button">专业任选: 0</div>
+    <div class="button">通识选修: 0</div>
+    <div class="button bg-red">实践教学: 0</div>
+    <div class="button bg-red">教师教育: 0</div>
+  </span>
+
+  <!-- section 1：公共必修，必须 21 门课；前 6 行 isDegreeCourse="是" 凑齐 test 期望的 degreeCourseTotal=6 -->
+  <fieldset>
+    <legend>公共必修</legend>
+    <table>
+      <tr><th>课程号</th><th>课程名</th><th>开课顺序</th><th>是否学位课程</th><th>学分</th><th>考试成绩</th><th>补考成绩</th><th>考试时间</th><th>备注</th></tr>
+      <tr><td>056001</td><td>大学体育①</td><td>1</td><td>否</td><td>1</td><td>41</td><td>60</td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>056002</td><td>大学体育②</td><td>2</td><td>是</td><td>1</td><td>85</td><td></td><td>2026/3/1 0:00:00</td><td></td></tr>
+      <tr><td>056003</td><td>大学体育③</td><td>3</td><td>是</td><td>1</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>056004</td><td>大学体育④</td><td>4</td><td>是</td><td>1</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>056005</td><td>大学体育⑤</td><td>5</td><td>是</td><td>1</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>056006</td><td>大学体育⑥</td><td>6</td><td>是</td><td>1</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>056007</td><td>大学体育⑦</td><td>7</td><td>是</td><td>1</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>011001</td><td>思想道德与法治</td><td>1</td><td>否</td><td>3</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>011002</td><td>中国近现代史纲要</td><td>1</td><td>否</td><td>3</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>011003</td><td>马克思主义基本原理</td><td>1</td><td>否</td><td>3</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>011004</td><td>毛概</td><td>1</td><td>否</td><td>3</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>011005</td><td>形势与政策①</td><td>1</td><td>否</td><td>0.5</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>011006</td><td>形势与政策②</td><td>2</td><td>否</td><td>0.5</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>011007</td><td>形势与政策③</td><td>3</td><td>否</td><td>0.5</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>011008</td><td>形势与政策④</td><td>4</td><td>否</td><td>0.5</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>022001</td><td>大学英语①</td><td>1</td><td>否</td><td>3</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>022002</td><td>大学英语②</td><td>2</td><td>否</td><td>3</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>022003</td><td>大学英语③</td><td>3</td><td>否</td><td>3</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>033001</td><td>军事理论</td><td>1</td><td>否</td><td>2</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>033002</td><td>军事技能</td><td>1</td><td>否</td><td>2</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+      <tr><td>044001</td><td>大学生心理健康教育</td><td>1</td><td>否</td><td>2</td><td>85</td><td></td><td>2025/9/1 0:00:00</td><td></td></tr>
+    </table>
+  </fieldset>
+
+  <!-- section 2-7：占位用，每个一门课，全部 isDegreeCourse="否"。test 只断言 sections.size=8，
+       不检查这些 section 内容；但每个 section 必须至少有 1 门课，否则 parser 会过滤掉。 -->
+  <fieldset>
+    <legend>学科基础</legend>
+    <table>
+      <tr><th>课程号</th><th>课程名</th><th>开课顺序</th><th>是否学位课程</th><th>学分</th><th>考试成绩</th><th>补考成绩</th><th>考试时间</th><th>备注</th></tr>
+      <tr><td>101001</td><td>高等数学</td><td>1</td><td>否</td><td>5</td><td></td><td></td><td></td><td></td></tr>
+    </table>
+  </fieldset>
+  <fieldset>
+    <legend>专业必修</legend>
+    <table>
+      <tr><th>课程号</th><th>课程名</th><th>开课顺序</th><th>是否学位课程</th><th>学分</th><th>考试成绩</th><th>补考成绩</th><th>考试时间</th><th>备注</th></tr>
+      <tr><td>201001</td><td>程序设计基础</td><td>1</td><td>否</td><td>3</td><td></td><td></td><td></td><td></td></tr>
+    </table>
+  </fieldset>
+  <fieldset>
+    <legend>专业必修②</legend>
+    <table>
+      <tr><th>课程号</th><th>课程名</th><th>开课顺序</th><th>是否学位课程</th><th>学分</th><th>考试成绩</th><th>补考成绩</th><th>考试时间</th><th>备注</th></tr>
+      <tr><td>201002</td><td>数据结构</td><td>2</td><td>否</td><td>3</td><td></td><td></td><td></td><td></td></tr>
+    </table>
+  </fieldset>
+  <fieldset>
+    <legend>通识选修</legend>
+    <table>
+      <tr><th>课程号</th><th>课程名</th><th>开课顺序</th><th>是否学位课程</th><th>学分</th><th>考试成绩</th><th>补考成绩</th><th>考试时间</th><th>备注</th></tr>
+      <tr><td>301001</td><td>通识课①</td><td>1</td><td>否</td><td>2</td><td></td><td></td><td></td><td></td></tr>
+    </table>
+  </fieldset>
+  <fieldset>
+    <legend>实践教学</legend>
+    <table>
+      <tr><th>课程号</th><th>课程名</th><th>开课顺序</th><th>是否学位课程</th><th>学分</th><th>考试成绩</th><th>补考成绩</th><th>考试时间</th><th>备注</th></tr>
+      <tr><td>401001</td><td>专业实习</td><td>1</td><td>否</td><td>4</td><td></td><td></td><td></td><td></td></tr>
+    </table>
+  </fieldset>
+  <fieldset>
+    <legend>教师教育</legend>
+    <table>
+      <tr><th>课程号</th><th>课程名</th><th>开课顺序</th><th>是否学位课程</th><th>学分</th><th>考试成绩</th><th>补考成绩</th><th>考试时间</th><th>备注</th></tr>
+      <tr><td>501001</td><td>教育心理学</td><td>1</td><td>否</td><td>2</td><td></td><td></td><td></td><td></td></tr>
+    </table>
+  </fieldset>
+
+  <!-- section 8：optional 格式（多一列「课程性质」），9 门课；fieldset 直接 text 节点 = requirement -->
+  <fieldset>
+    <legend>主修：计算机科学与技术（师范类）</legend>
+    在下列课程中至少应选修12学分
+    <table>
+      <tr><th>课程性质</th><th>课程号</th><th>课程名</th><th>学分</th><th>考试成绩</th><th>补考成绩</th><th>考试时间</th><th>备注</th></tr>
+      <tr><td>专业限选</td><td>261001</td><td>操作系统</td><td>3</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>专业限选</td><td>261002</td><td>计算机网络</td><td>3</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>专业限选</td><td>261003</td><td>数据库系统</td><td>3</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>专业任选</td><td>271001</td><td>机器学习</td><td>3</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>专业任选</td><td>271002</td><td>深度学习</td><td>3</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>专业任选</td><td>271003</td><td>云计算</td><td>2</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>专业任选</td><td>271004</td><td>区块链导论</td><td>2</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>专业任选</td><td>271005</td><td>软件工程</td><td>2</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>专业任选</td><td>271006</td><td>编译原理</td><td>3</td><td></td><td></td><td></td><td></td></tr>
+    </table>
+  </fieldset>
+</body></html>

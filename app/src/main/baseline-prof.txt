@@ -1,0 +1,28 @@
+# 手写 Baseline Profile（无 macrobenchmark 模块，规则保守：全量 L 类规则 + 启动链路 HSPL 通配）。
+# AGP 会用 profgen 把本文件编成 APK 内 assets/dexopt/baseline.prof，R8 改名由 AGP 自动重写；
+# 首启后台安装靠 profileinstaller 依赖（GitHub 直发 APK，没有 Play 云端 profile）。
+# 语法：https://developer.android.com/topic/performance/baselineprofiles/manually-create-measure
+#   L<类描述符>            类预加载规则（不能带 H/S/P 标志）
+#   HSPL<类>->**(**)**     方法 AOT 规则（H=hot, S=startup, P=post-startup；必须带标志）
+#   ** 跨包段通配（也匹配描述符结尾的分号），* 单段内通配
+
+# 全部自有类进 startup 类列表
+Lcn/jxnu/nvzhuanban/**
+
+# 冷启动链路：Application（prefs init / sessionRestore / 通知预热）→ MainActivity（splash + 主题）
+HSPLcn/jxnu/nvzhuanban/NvzhuanbanApp**->**(**)**
+HSPLcn/jxnu/nvzhuanban/MainActivity**->**(**)**
+
+# 首帧前后的 UI 组合：主题 → 导航（AppNav/Routes）→ 共享组件 → 首个 tab 课表
+HSPLcn/jxnu/nvzhuanban/ui/theme/**->**(**)**
+HSPLcn/jxnu/nvzhuanban/ui/navigation/**->**(**)**
+HSPLcn/jxnu/nvzhuanban/ui/components/**->**(**)**
+HSPLcn/jxnu/nvzhuanban/ui/screens/schedule/**->**(**)**
+# 未登录用户的首屏是登录页
+HSPLcn/jxnu/nvzhuanban/ui/screens/login/**->**(**)**
+
+# 启动即跑的数据层：prefs 存储、CAS/cookie/HTTP、会话恢复与通知预热（repository + 解析器 + 模型）
+HSPLcn/jxnu/nvzhuanban/data/storage/**->**(**)**
+HSPLcn/jxnu/nvzhuanban/data/network/**->**(**)**
+HSPLcn/jxnu/nvzhuanban/data/repository/**->**(**)**
+HSPLcn/jxnu/nvzhuanban/data/model/**->**(**)**

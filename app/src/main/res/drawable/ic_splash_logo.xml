@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    启动页图标（windowSplashScreenAnimatedIcon）：白色品牌标「将成」，浅色/深色主题共用。
+    Android 12+ 会把它裁进直径 2/3 画布的圆形可视域；内容缩放 0.68 后
+    最远端点（火花点外缘）半径 273（1024 视口坐标）< 341 可视半径，不会被裁。
+    背景色由主题的 windowSplashScreenBackground（女专红）提供。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <group
+        android:scaleX="0.68"
+        android:scaleY="0.68"
+        android:pivotX="512"
+        android:pivotY="512">
+        <path
+            android:pathData="M571.8,272.8 A266,266 0 1 0 771.2,472.2"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="102"
+            android:strokeLineCap="round"
+            android:fillColor="@android:color/transparent" />
+        <path
+            android:pathData="M683,289.3 A71.7,71.7 0 1 0 826.4,289.3 A71.7,71.7 0 1 0 683,289.3 Z"
+            android:fillColor="#FFFFFF" />
+    </group>
+</vector>

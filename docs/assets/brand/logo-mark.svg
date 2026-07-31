@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 1024 1024">
+  <!-- 江师办品牌标（裸标形态）：女专红描边、透明底，适合白底文档 / 印刷。
+       深色背景上请改用 #FFB3B6（主题 DarkPrimary）或白色。母版几何见 docs/brand.md。 -->
+  <title>江师办裸标「将成」（女专红，白底/文档用）</title>
+  <path d="M571.8,272.8 A266,266 0 1 0 771.2,472.2" fill="none" stroke="#A91D34" stroke-width="102" stroke-linecap="round"></path>
+  <path d="M683,289.3 A71.7,71.7 0 1 0 826.4,289.3 A71.7,71.7 0 1 0 683,289.3 Z" fill="#A91D34"></path>
+</svg>

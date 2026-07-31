@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    江师办品牌标「将成」：即将闭合的粗环（教务事项、一学期的课）+ 缺口处一粒跃出的火花点（办结在即）。
+    母版几何（1024 视口）与 docs/assets/brand/logo-mark.svg 同源，改一处要同步另一处。
+    描边 / 填充全部为白色，应用内使用时通过 Icon(tint=…) 着色。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <path
+        android:pathData="M571.8,272.8 A266,266 0 1 0 771.2,472.2"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="102"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent" />
+    <path
+        android:pathData="M683,289.3 A71.7,71.7 0 1 0 826.4,289.3 A71.7,71.7 0 1 0 683,289.3 Z"
+        android:fillColor="#FFFFFF" />
+</vector>

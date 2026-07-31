@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 1024 1024">
+  <!-- 江师办 app 图标形态：女专红渐变圆角方 + 白色品牌标「将成」。
+       母版几何与 app/src/main/res/drawable/ic_brand_logo.xml 同源，改一处要同步另一处（见 docs/brand.md）。
+       落版刻意与桌面图标不同：头图用 scale 0.78 + 竖向 -20 校正（内容几何中心 (512,532) 对齐视口中心），
+       比桌面前景的 0.68 更紧凑——这是设计取舍，不是漏同步，勿「修」回 0.68。 -->
+  <title>江师办品牌标「将成」：即将闭合的环，缺口处一粒火花</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#B72440"></stop>
+      <stop offset="1" stop-color="#8F1226"></stop>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="232" fill="url(#bg)"></rect>
+  <g transform="translate(512 512) scale(0.78) translate(-512 -532)">
+  <path d="M571.8,272.8 A266,266 0 1 0 771.2,472.2" fill="none" stroke="#FFFFFF" stroke-width="102" stroke-linecap="round"></path>
+  <path d="M683,289.3 A71.7,71.7 0 1 0 826.4,289.3 A71.7,71.7 0 1 0 683,289.3 Z" fill="#FFFFFF"></path>
+  </g>
+</svg>

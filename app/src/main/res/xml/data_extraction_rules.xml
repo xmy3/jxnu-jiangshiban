@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12+ 备份与设备迁移规则。
+
+    同 backup_rules.xml：免登录凭证 / cookie / widget 快照 / installation UUID 都不允许跨设备携带。
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="jxnu_auth.xml"/>
+        <exclude domain="sharedpref" path="jxnu_secure_creds.xml"/>
+        <exclude domain="sharedpref" path="jxnu_secure_creds_fallback.xml"/>
+        <exclude domain="sharedpref" path="theme_prefs.xml"/>
+        <exclude domain="sharedpref" path="avatar_prefs.xml"/>
+        <exclude domain="sharedpref" path="course_overrides.xml"/>
+        <exclude domain="sharedpref" path="announcement_read_prefs.xml"/>
+        <exclude domain="sharedpref" path="people_search_history.xml"/>
+        <exclude domain="file" path="jxnu_cookies.tsv"/>
+        <exclude domain="file" path="widget_snapshot.json"/>
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="jxnu_auth.xml"/>
+        <exclude domain="sharedpref" path="jxnu_secure_creds.xml"/>
+        <exclude domain="sharedpref" path="jxnu_secure_creds_fallback.xml"/>
+        <exclude domain="sharedpref" path="theme_prefs.xml"/>
+        <exclude domain="sharedpref" path="avatar_prefs.xml"/>
+        <exclude domain="sharedpref" path="course_overrides.xml"/>
+        <exclude domain="sharedpref" path="announcement_read_prefs.xml"/>
+        <exclude domain="sharedpref" path="people_search_history.xml"/>
+        <exclude domain="file" path="jxnu_cookies.tsv"/>
+        <exclude domain="file" path="widget_snapshot.json"/>
+    </device-transfer>
+</data-extraction-rules>

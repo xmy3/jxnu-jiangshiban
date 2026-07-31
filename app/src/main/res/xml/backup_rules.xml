@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 11- 的 auto-backup 规则。Android 12+ 改用 data_extraction_rules.xml。
+
+    免登录凭证 / 教务 cookie / widget 快照 / installation UUID 都必须排除：
+    - EncryptedSharedPreferences 的密钥绑定本机 keystore，备份到云端后新设备解不开
+    - cookie 会跨设备失效；installation UUID 备份会让风控认为同一台设备多次登录
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="jxnu_auth.xml"/>
+    <exclude domain="sharedpref" path="jxnu_secure_creds.xml"/>
+    <exclude domain="sharedpref" path="jxnu_secure_creds_fallback.xml"/>
+    <exclude domain="sharedpref" path="theme_prefs.xml"/>
+    <exclude domain="sharedpref" path="avatar_prefs.xml"/>
+    <exclude domain="sharedpref" path="course_overrides.xml"/>
+    <exclude domain="sharedpref" path="announcement_read_prefs.xml"/>
+    <exclude domain="sharedpref" path="people_search_history.xml"/>
+    <exclude domain="file" path="jxnu_cookies.tsv"/>
+    <exclude domain="file" path="widget_snapshot.json"/>
+</full-backup-content>

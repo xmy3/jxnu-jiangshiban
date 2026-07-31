@@ -1,0 +1,150 @@
+﻿<resources>
+    <string name="app_name">江师办</string>
+
+    <!-- 底部导航 -->
+    <string name="nav_schedule">课表</string>
+    <string name="nav_announcement">通知</string>
+    <string name="nav_profile">我的</string>
+
+    <!-- 登录页 -->
+    <string name="login_title">欢迎使用江师办</string>
+    <string name="login_subtitle">江西师范大学 · 掌上教务</string>
+    <string name="login_username">学号</string>
+    <string name="login_password">统一身份认证密码</string>
+    <string name="login_button">登 录</string>
+    <string name="login_button_loading">登录中…</string>
+    <string name="login_button_saved">使用已保存的密码登录</string>
+    <string name="login_remember">下次自动登录</string>
+    <string name="login_help">使用帮助</string>
+    <string name="login_dev_hint">使用前请确认网络畅通</string>
+
+    <!-- 课表 -->
+    <string name="schedule_week_template">第 %1$d 周</string>
+    <string name="schedule_today">今天</string>
+    <string name="schedule_empty">这一周没有课，去玩吧 🎉</string>
+
+    <!-- 成绩 -->
+    <string name="grades_title">我的成绩</string>
+    <string name="grades_tab_semester">学期成绩</string>
+    <string name="grades_tab_test">考试出分</string>
+    <string name="grades_gpa_label">加权平均标准分</string>
+    <string name="grades_credit_label">已修学分</string>
+    <string name="grades_count_label">课程门数</string>
+    <string name="grades_empty">还没有成绩数据</string>
+    <string name="test_grades_empty">暂无考试出分数据</string>
+
+    <!-- 考试 -->
+    <string name="exams_title">考试安排</string>
+    <string name="exams_countdown_days">还剩 %1$d 天</string>
+    <string name="exams_today">今天考</string>
+    <string name="exams_finished">已结束</string>
+    <string name="exams_empty">暂无考试安排</string>
+
+    <!-- 补缓考（合并入「考试安排」页内一节） -->
+    <string name="makeup_exam_section_title">补缓考 (%1$d)</string>
+    <string name="makeup_exam_kind_default">补考</string>
+    <string name="makeup_exam_expand">展开补缓考</string>
+    <string name="makeup_exam_collapse">收起补缓考</string>
+
+    <!-- 空教室 -->
+    <string name="classroom_title">空闲教室</string>
+
+    <!-- 开课查询（Public_Kkap 开课安排检索） -->
+    <string name="course_offering_title">开课查询</string>
+    <string name="student_info_title">基本信息</string>
+
+    <!-- 校历（教学周历索引） -->
+    <string name="calendar_title">校历</string>
+    <string name="calendar_empty">未解析到校历条目</string>
+    <string name="calendar_badge_correction">调整版</string>
+    <string name="calendar_open_failed">没有可打开该文件的应用</string>
+    <string name="calendar_doc_open_in_browser">在浏览器中打开</string>
+    <string name="calendar_doc_load_failed">校历文件加载失败</string>
+    <string name="calendar_doc_empty_response">校历文件返回空响应</string>
+    <string name="calendar_doc_not_pdf">文件内容异常，可尝试右上角在浏览器中打开</string>
+    <string name="calendar_doc_page_cd">校历第%1$d页</string>
+    <string name="calendar_doc_pages_truncated">页数过多，仅显示前 %1$d 页</string>
+
+    <!-- 师生查询（合并的搜索入口） -->
+    <string name="people_search_title">师生查询</string>
+    <string name="people_search_type_teacher">教工</string>
+    <string name="people_search_type_student">学生</string>
+    <string name="people_search_keyword_hint_teacher">输入教师姓名或教号</string>
+    <string name="people_search_keyword_hint_student">输入学生姓名或学号</string>
+    <string name="people_search_field_name">姓名</string>
+    <string name="people_search_field_teacher_id">教号</string>
+    <string name="people_search_field_student_id">学号</string>
+    <string name="people_search_mode_exact">精确</string>
+    <string name="people_search_mode_fuzzy">模糊</string>
+    <string name="people_search_button">查询</string>
+    <string name="people_search_initial_teacher">输入姓名或教号开始查询</string>
+    <string name="people_search_initial_student">输入姓名或学号开始查询</string>
+    <string name="people_search_no_match_teacher">没有找到符合条件的教工</string>
+    <string name="people_search_no_match_student">没有找到符合条件的学生</string>
+    <string name="people_search_count_template">查询结果：%1$d 条记录</string>
+    <string name="people_search_history_title">最近查看</string>
+    <string name="people_search_history_clear">清空</string>
+    <string name="people_search_history_remove">删除这条历史</string>
+
+    <!-- 教工详情页（被合并搜索结果的卡片点击进入） -->
+    <string name="teacher_detail_title_fallback">教工信息</string>
+    <string name="teacher_detail_intro_label">教学简介</string>
+    <string name="teacher_detail_open_schedule">查看课表</string>
+
+    <!-- 学生详情页 -->
+    <string name="student_detail_title_fallback">学生信息</string>
+    <string name="student_detail_open_schedule">查看课表</string>
+
+    <!-- 他人课表（教师 / 学生共用） -->
+    <string name="user_schedule_title_fallback">课表</string>
+    <string name="user_schedule_title_template">%1$s 的课表</string>
+    <string name="user_schedule_empty">该学期暂无课表</string>
+
+    <!-- 教务通知/通告 -->
+    <string name="announcement_title">通知</string>
+    <string name="announcement_detail_title">通知详情</string>
+    <string name="announcement_empty">没有相关通知</string>
+    <string name="announcement_open_external">在浏览器中打开</string>
+    <string name="announcement_search">搜索</string>
+    <string name="announcement_search_hint">在标题中搜索</string>
+    <string name="announcement_search_clear">清除搜索词</string>
+    <string name="announcement_search_empty_template">已加载 %1$d 条，未找到「%2$s」</string>
+    <string name="announcement_search_load_more">加载更早的通知继续搜索</string>
+    <!-- 详情页：jwc 无会话时返回的"需要登录"占位页，引导走 app 内登录 -->
+    <string name="announcement_login_required_title">登录后查看通知详情</string>
+    <string name="announcement_login_required_desc">这条通知需要登录教务系统后才能查看完整内容</string>
+    <string name="announcement_login_required_action">去登录</string>
+    <!-- 详情页阅读体验 -->
+    <string name="announcement_detail_empty">正文为空</string>
+    <string name="announcement_view_image">查看大图</string>
+    <string name="announcement_image_fallback_desc">通知配图</string>
+    <string name="announcement_font_size_action">调整字号</string>
+    <string name="announcement_font_size_title">正文字号</string>
+    <string name="announcement_font_size_small">小</string>
+    <string name="announcement_font_size_default">标准</string>
+    <string name="announcement_font_size_large">大</string>
+    <string name="announcement_font_size_xlarge">特大</string>
+
+    <!-- 个人中心 -->
+    <string name="profile_title">我的</string>
+    <string name="profile_about">关于</string>
+    <string name="profile_logout">退出登录</string>
+    <string name="profile_theme">主题色</string>
+    <string name="profile_theme_dynamic">跟随系统壁纸 (Material You)</string>
+    <string name="profile_dynamic_color">动态取色</string>
+    <string name="profile_dynamic_color_unavailable">需 Android 12 及以上</string>
+
+    <!-- 通用 -->
+    <string name="common_loading">加载中…</string>
+    <string name="common_retry">重试</string>
+
+    <!-- 内容描述 (accessibility) -->
+    <string name="cd_back">返回</string>
+    <string name="cd_refresh">刷新</string>
+    <string name="cd_avatar">头像</string>
+    <string name="cd_close">关闭</string>
+
+    <!-- 桌面小部件 -->
+    <string name="widget_label">今日课表</string>
+    <string name="widget_description">显示今天的课程和下一节倒计时</string>
+</resources>

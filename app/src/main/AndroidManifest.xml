@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Android 11+ package visibility：校历 PDF / 公告「在浏览器中打开」/ 空闲教室外链
+         都需要系统能 resolve 到处理 http(s) VIEW 的浏览器。queries 里必须显式声明
+         BROWSABLE category —— 浏览器（Chrome / 系统浏览器）的 intent-filter 都带
+         BROWSABLE，缺这个 category 的 queries 在 visibility 过滤时就会把它们排除掉，
+         结果 chooser 列表为空、Activity 全部不可见。-->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="http" />
+        </intent>
+    </queries>
+
+    <!-- enableOnBackInvokedCallback=false：关闭预测性返回（Predictive Back）。targetSdk 36 下
+         系统默认开启「边缘滑动预览上一界面」的返回动画，这里显式 opt-out，回到无预览的即时返回。
+         不影响 Compose BackHandler / 导航返回 —— androidx 的 OnBackPressedDispatcher 会回退到
+         传统 onBackPressed 分发，ClassroomScreen 的 WebView 返回等逻辑照常工作。 -->
+    <application
+        android:name=".NvzhuanbanApp"
+        android:allowBackup="true"
+        android:enableOnBackInvokedCallback="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Nvzhuanban"
+        tools:targetApi="34">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Nvzhuanban.Splash">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 桌面小部件：今日课表 + 下一节倒计时 -->
+        <!-- 除标准 APPWIDGET_UPDATE 外，还监听几类系统时间 / 日期 / 语言变化广播，
+             触发 widget 实时重绘（详见 TodayScheduleWidgetReceiver）；
+             ACTION_TICK 是 WidgetUpdateScheduler 自家排的 AlarmManager 唤醒。 -->
+        <receiver
+            android:name=".ui.widget.TodayScheduleWidgetReceiver"
+            android:exported="false"
+            android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.LOCALE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="cn.jxnu.nvzhuanban.widget.action.TICK" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/today_schedule_widget_info" />
+        </receiver>
+
+        <!-- 「一键添加小组件」的成功回执：requestPinAppWidget 的 successCallback
+             （PendingIntent 显式指向本类，无需 intent-filter）。收到即弹 Toast
+             并让「添加桌面小组件」引导弹窗自动关闭。 -->
+        <receiver
+            android:name=".ui.widget.WidgetPinResultReceiver"
+            android:exported="false" />
+    </application>
+
+</manifest>

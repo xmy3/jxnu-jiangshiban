@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>课表（教师视角，全空）</title></head>
+<body>
+  <form>
+    <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="dGVhY2hlci1zY2hlZHVsZS12aWV3c3RhdGUtZHVtbXkK" />
+    <input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="547AE704" />
+    <input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="dGVhY2hlci1zY2hlZHVsZS1ldnZhbGlkYXRpb24tZHVtbXkK" />
+
+    <!-- 教师课表（经 All_Display.aspx 渲染）控件 prefix 是 _ctl6；12 个学期 option，选中 26-27 第 1 学期 -->
+    <select name="_ctl6:ddlSterm" id="_ctl6_ddlSterm">
+      <option value="2026/9/1 0:00:00" selected="selected">26-27第1学期</option>
+      <option value="2026/3/1 0:00:00">25-26第2学期</option>
+      <option value="2025/9/1 0:00:00">25-26第1学期</option>
+      <option value="2025/3/1 0:00:00">24-25第2学期</option>
+      <option value="2024/9/1 0:00:00">24-25第1学期</option>
+      <option value="2024/3/1 0:00:00">23-24第2学期</option>
+      <option value="2023/9/1 0:00:00">23-24第1学期</option>
+      <option value="2023/3/1 0:00:00">22-23第2学期</option>
+      <option value="2022/9/1 0:00:00">22-23第1学期</option>
+      <option value="2022/3/1 0:00:00">21-22第2学期</option>
+      <option value="2021/9/1 0:00:00">21-22第1学期</option>
+      <option value="2021/3/1 0:00:00">20-21第2学期</option>
+    </select>
+
+    <!-- 空 grid：parseCell 在 cell 无 <div> 时返回 null，于是 courses 列表为空 -->
+    <div id="_ctl6_NewKcb">
+      <table>
+        <tr><td>1 2</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>3</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>4</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>5</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>6 7</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>8 9</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td><div>晚<br>上</div></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      </table>
+    </div>
+  </form>
+</body></html>

@@ -1,0 +1,27 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 应用基础主题：Compose 接管所有色彩，这里只配状态栏 -->
+    <style name="Theme.Nvzhuanban" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:enforceNavigationBarContrast" tools:targetApi="q">false</item>
+        <item name="android:enforceStatusBarContrast" tools:targetApi="q">false</item>
+    </style>
+
+    <!--
+        Splash 主题：Android 12+ 用系统 SplashScreen API，
+        12 以下由 androidx.core:core-splashscreen 提供等价兼容。
+
+        主题必须 parent="Theme.SplashScreen"；启动后由 MainActivity 切回 Theme.Nvzhuanban。
+    -->
+    <style name="Theme.Nvzhuanban.Splash" parent="Theme.SplashScreen">
+        <!-- 背景：女专红，保持启动一致性（在浅色 / 深色模式都是这个红） -->
+        <item name="windowSplashScreenBackground">@color/brand_nvzhuan_red</item>
+        <!-- 前景图标：矢量品牌标（288dp 画布、内容落在系统 2/3 圆形可视域内），浅色/深色主题共用同一资源，任意分辨率无损 -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <!-- Splash 结束后切换到的真实主题 -->
+        <item name="postSplashScreenTheme">@style/Theme.Nvzhuanban</item>
+    </style>
+
+</resources>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    自适应图标前景：白色品牌标「将成」（环 + 火花点），几何与 ic_brand_logo 同一母版。
+    内容缩放 0.68 后所有端点都落在 66/108 安全区内（最远点 = 火花点外缘，
+    距视口中心 401，缩放后 273 ≤ 312 安全区半径，1024 视口坐标）。
+    monochrome 层复用本文件（白描边 = 全 alpha，系统按 alpha 蒙版着色）。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <group
+        android:scaleX="0.68"
+        android:scaleY="0.68"
+        android:pivotX="512"
+        android:pivotY="512">
+        <path
+            android:pathData="M571.8,272.8 A266,266 0 1 0 771.2,472.2"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="102"
+            android:strokeLineCap="round"
+            android:fillColor="@android:color/transparent" />
+        <path
+            android:pathData="M683,289.3 A71.7,71.7 0 1 0 826.4,289.3 A71.7,71.7 0 1 0 683,289.3 Z"
+            android:fillColor="#FFFFFF" />
+    </group>
+</vector>

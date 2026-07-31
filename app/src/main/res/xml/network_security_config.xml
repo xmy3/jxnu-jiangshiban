@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  全局 HTTPS-only。所有 *.jxnu.edu.cn 出口都强制 TLS。
+  OkHttp 内的请求 URL 都用 https://（见 JxnuUrls.kt），万一服务端 302 到 http://，
+  由 SchemeUpgradeInterceptor 在网络层重写 Location 头到 https；不再放开 cleartext。
+
+  trust-anchors 仅信任 system CA：拒绝用户安装的根证书参与对 jxnu host 的校验，
+  常见的企业 MITM 代理 / 恶意根证书不能解密本 App 的流量。
+  debug-overrides 让 debuggable build 仍信任 user CA，方便 Charles 等抓包调试。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>

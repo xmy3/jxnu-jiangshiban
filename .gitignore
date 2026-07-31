@@ -1,0 +1,40 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+/app/release
+/.kotlin
+
+# Release 签名信息：仅模板入仓 (keystore.properties.example)，真实文件与 jks 一律忽略
+keystore.properties
+*.jks
+*.keystore
+
+# 真实抓包/HTML 样本：含学号、姓名、成绩、cookie，禁止入库
+/samples/
+*.har
+
+# 原始素材：校徽 SVG 已栅格化为 drawable-*dpi 资源，源文件不入库
+/footlogo.svg
+/ChatGPT Image.png
+
+# 历史 / 临时 build 产物归档：公开发布走 GitHub Releases，仓库不再追踪 APK / AAB
+/dist/
+
+# Android Studio Logcat 导出文件（手动诊断时存到根目录，不入库）
+*.logcat
+
+# IDE 本机状态：部署目标选择、VCS 映射随开发机漂移，不入库
+/.idea/deploymentTargetSelector.xml
+/.idea/vcs.xml

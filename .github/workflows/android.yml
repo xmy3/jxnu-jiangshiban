@@ -1,0 +1,43 @@
+name: Android
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+# 同一分支 / PR 连续推送时只保留最新一次跑批，自动取消已过期的运行
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Test, compile, and lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Run JVM tests
+        run: ./gradlew :app:test
+
+      - name: Compile debug Kotlin
+        run: ./gradlew :app:compileDebugKotlin
+
+      - name: Run Android lint
+        run: ./gradlew :app:lintDebug
