@@ -55,13 +55,14 @@ internal fun CourseDetailSheet(
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 8.dp),
     ) {
-        // 标题：色块 + 课程名。色块与网格里这门课的卡片同色（courseColor 亮暗自适应）
+        // 标题：色块 + 课程名。色块取这门课的色相强色（亮=深字色、暗=卡底色，见 CourseSwatch.accent），
+        // 与网格里卡片同色相
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
                     .size(width = 4.dp, height = 28.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(courseColor(course)),
+                    .background(courseSwatch(course).accent),
             )
             Spacer(Modifier.width(12.dp))
             Text(

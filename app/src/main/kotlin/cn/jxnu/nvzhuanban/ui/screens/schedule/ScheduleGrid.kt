@@ -301,8 +301,8 @@ private fun CourseCard(
     sectionHeightDp: () -> Float,
     onClick: () -> Unit,
 ) {
-    // 亮暗自适应：courseColor 内部按当前生效主题选色板（见 SchedulePalettes.kt）
-    val cardColor = courseColor(course)
+    // 亮暗自适应：courseSwatch 内部按当前生效主题选色板（见 SchedulePalettes.kt）
+    val swatch = courseSwatch(course)
     val teacherMaxLines = if (course.sectionCount >= 2) 1 else 0
     // "周几 / 第几节"只体现在卡片的视觉排布（列位置 + y offset）上，语义树里读不到，
     // 这里显式并进描述，让 TalkBack 把卡片当一个整体播报
@@ -338,7 +338,7 @@ private fun CourseCard(
             .fillMaxWidth()
             .padding(2.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(cardColor)
+            .background(swatch.container)
             .let { base ->
                 if (highlightPulse != null) {
                     base.drawBehind {
@@ -346,7 +346,7 @@ private fun CourseCard(
                         // 的话外侧 1dp 会被裁掉，实际只剩 1dp。按半线宽内缩画满 2dp。
                         val stroke = 2.dp.toPx()
                         drawRoundRect(
-                            color = Color.White.copy(alpha = highlightPulse.value),
+                            color = swatch.onContainer.copy(alpha = highlightPulse.value),
                             topLeft = Offset(stroke / 2f, stroke / 2f),
                             size = Size(size.width - stroke, size.height - stroke),
                             style = Stroke(width = stroke),
@@ -370,13 +370,13 @@ private fun CourseCard(
                     text = highlightTag,
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                     fontWeight = FontWeight.Bold,
-                    color = cardColor,
+                    color = swatch.container,
                     maxLines = 1,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color.White)
+                        .background(swatch.onContainer)
                         .padding(horizontal = 4.dp),
                 )
                 Spacer(Modifier.height(2.dp))
@@ -385,7 +385,7 @@ private fun CourseCard(
                 text = course.name,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = Color.White,
+                color = swatch.onContainer,
                 maxLines = when {
                     highlightTag != null -> 1
                     course.sectionCount >= 3 -> 3
@@ -401,7 +401,7 @@ private fun CourseCard(
                 text = "@${course.location}",
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 11.sp,
-                    color = Color.White,
+                    color = swatch.onContainer,
                 ),
                 maxLines = 1,
                 softWrap = false,
@@ -416,7 +416,7 @@ private fun CourseCard(
                 Text(
                     text = course.teacher,
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                    color = Color.White,
+                    color = swatch.onContainer,
                     maxLines = teacherMaxLines,
                     overflow = TextOverflow.Ellipsis,
                 )

@@ -10,80 +10,39 @@
   </p>
 </div>
 
-[江西师范大学] 教务系统的非官方 Android 客户端，灵感来自「酱紫办」。Kotlin + Jetpack Compose + Material 3，单 Gradle 模块。品牌标识与配色规范见 [docs/brand.md](docs/brand.md)。
+江西师大教务系统的第三方 Android 客户端。
 
-> ⚠️ **本项目与江西师范大学官方、教务处、信息办均无任何关联。** 所有数据均来自访问者本人在 `jwc.jxnu.edu.cn` 上能正常浏览的页面，App 仅做客户端渲染。
+> 非官方项目。App 没有自己的服务器，所有数据都来自你本人登录教务系统后能看到的页面。
 
-## 功能
+## 能做什么
 
-- 课表（含本学期/历史学期切换、自定义周次覆盖、桌面小部件）
-- 通知 / 通告 / 教务风采 / 图文新闻（教务处四路合并，本地搜索）
-- 成绩（学期成绩 + 考试出分两个 sub-tab，江师大用「标准分」/「加权平均标准分」）
-- 考试安排（学期考试 + 补缓考合并展示，含倒计时）
-- 开课查询（按学期 / 学院 / 星期 / 节次 / 教室 / 课程 / 教师组合检索全校开课；课表详情可一键查某位老师的课或某间教室的占用）
-- 培养方案与毕业学分审核
-- 师生查询、他人课表、学生 / 教师详情
-- 校历 PDF 索引
-- 空闲教室（嵌入 [xmy3/jxnu-classroom](https://xmy3.github.io/jxnu-classroom/)）
+- 课表：切学期、左右滑动切周、桌面小部件，没网时也能看最近一次加载的课表。教务网的课表没有周次信息，默认按 1–18 周显示，可以在课程详情里自己改
+- 通知：教务处的通知、通告、教务风采、图文新闻合在一个列表里，支持搜索，正文可以调字号
+- 成绩：学期成绩和考试出分。
+- 考试安排：学期考试和补缓考放一起，带倒计时
+- 开课查询：全校开课检索；课表里点老师名字或教室号，可以直接查这个老师的课、这间教室的占用
+- 还有：培养方案、毕业学分审核、师生查询、看他人课表、校历、空闲教室
 
-## 安全与隐私
+## 隐私
 
-- **没有自建后端。** App 不收集、不上报任何遥测、不接入任何第三方分析 SDK。所有请求只发往 `*.jxnu.edu.cn`。
-- **登录走 CAS 标准流程**：`uis.jxnu.edu.cn/cas/login`，密码用教务公钥 RSA 加密后提交，与浏览器登录走同一接口。
-- **凭证仅本机存储**：勾选「下次自动登录」时，密码经 Android Keystore 硬件根密钥加密写入 `EncryptedSharedPreferences`，卸载即销毁，**不会**进入云备份 / 换机迁移（见 `app/src/main/res/xml/data_extraction_rules.xml`）。
-- **全站强制 HTTPS**：见 `network_security_config.xml`。仅 debug 包接受用户安装的根证书（Charles 抓包调试用）。
-- **公开页**（通知列表、校历）不带 cookie；**业务页**（课表、成绩等）才附本机会话 cookie。
-
-## 系统要求
-
-- Android 8.0 (API 26) 及以上
-- 联网（**不需要校园网或 VPN**，`jwc.jxnu.edu.cn` 公网可达）
+没有后端，没有统计 SDK，请求只发往学校域名（`*.jxnu.edu.cn`）。登录走学校 CAS 的标准流程，密码 RSA 加密后提交，和浏览器登录是同一个接口。勾选「下次自动登录」时密码存在本机（Android Keystore 加密），卸载即销毁，不进云备份。细节写在 [docs/privacy.md](docs/privacy.md)。
 
 ## 安装
 
-去 [Releases](../../releases) 下最新一份 APK 安装即可。
+Android 8.0 以上，去 [Releases](../../releases) 下载 APK。
 
 ## 自己编译
 
-依赖 JDK 17+ 和 Android SDK 36。仓库自带 Gradle Wrapper（pinned 8.9）。
-
-常用任务：
+需要 JDK 17+ 和 Android SDK 36，Gradle Wrapper 仓库自带：
 
 ```bash
-# 编译 debug APK
-./gradlew :app:assembleDebug
-
-# 仅编译验证（最快）
-./gradlew :app:compileDebugKotlin
-
-# 跑全部 JVM 单测（parser 回归 + 工具类）
-./gradlew :app:test
-
-# 打 release APK + AAB（需要签名配置，见下）
-./gradlew :app:assembleRelease :app:bundleRelease
+./gradlew :app:assembleDebug    # debug 包
+./gradlew :app:test             # 单测（parser 回归，几秒跑完）
 ```
 
-### 配 release 签名
+想打 release 包要自己配签名：`keytool` 生成一个 keystore，复制 `keystore.properties.example` 为 `keystore.properties` 填好；也可以放在仓库外，用环境变量 `NVZHUANBAN_KEYSTORE_PROPERTIES` 指过去。keystore 和密码别提交进仓库。
 
-1. 生成 keystore（先做一次就行，自己保管好）：
-   ```bash
-   keytool -genkeypair -v -keystore release.jks -alias nvzhuanban \
-           -keyalg RSA -keysize 2048 -validity 36500
-   ```
-2. 复制 `keystore.properties.example` 为 `keystore.properties` 并填上密码/别名；或者放到仓库外用环境变量 `NVZHUANBAN_KEYSTORE_PROPERTIES=/path/to/keystore.properties` 指过去（推荐，仓库里始终没有签名信息）。
-3. `keystore.properties` 与 `release.jks` 已经在 `.gitignore` 里，**别提交**。
+## 已知问题
 
-## 已知限制
-
-- 服务端 ASP.NET WebForms 偶尔会因 ViewState 漂移返回 500；下拉刷新一般能自愈。
-- 课表页本身不带「周次」字段，所有课程默认 1–18 周。学期实际周次可在课程详情里手动改，覆盖保存在本机。
-- 教务处自己有时把考试时间录得不准（甚至有"上午"标 09:00 这种）；UI 只信「日期」，不显示「时-分」。
-
-## 致谢
-
-- 灵感来自「酱紫办」。
-- 空闲教室页托管在 [xmy3/jxnu-classroom](https://github.com/xmy3/jxnu-classroom)。
-
-## 反馈
-
-GitHub Issues 直接提；不会出现在 App 内的"问题反馈"入口，因为 App 不收任何用户上行信息。
+- 教务网是老 ASP.NET，偶尔抽风返回 500，下拉刷新一般能自己好
+- 考试的具体时间教务处经常不填或乱填，所以 App 只信日期，不显示几点开考
