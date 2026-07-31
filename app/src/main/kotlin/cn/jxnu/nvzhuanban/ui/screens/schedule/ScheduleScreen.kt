@@ -5,15 +5,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,7 +35,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -49,6 +51,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -233,24 +236,14 @@ fun ScheduleScreen(
             SnackbarHost(rememberTransientErrorSnackbar(viewModel.transientError))
         },
         topBar = {
-            TopAppBar(
-                title = {
-                    SemesterTitle(
-                        weekText = stringResource(R.string.schedule_week_template, state.selectedWeek),
-                        semester = state.semester,
-                        clickable = state.semesters.size > 1,
-                        onClick = { showSemesterSheet = true },
-                    )
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.jumpToToday() }) {
-                        Icon(Icons.Outlined.Today, contentDescription = stringResource(R.string.schedule_today))
-                    }
-                    RefreshIconButton(isRefreshing = isRefreshing, onClick = viewModel::refresh)
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ),
+            ScheduleTopBar(
+                weekText = stringResource(R.string.schedule_week_template, state.selectedWeek),
+                semester = state.semester,
+                clickable = state.semesters.size > 1,
+                onTitleClick = { showSemesterSheet = true },
+                onJumpToday = viewModel::jumpToToday,
+                isRefreshing = isRefreshing,
+                onRefresh = viewModel::refresh,
             )
         },
     ) { padding ->
@@ -383,42 +376,81 @@ fun ScheduleScreen(
     }
 }
 
+/**
+ * 紧凑顶栏：周次 + 学期并成一行，替代原来的 M3 [androidx.compose.material3.TopAppBar]——
+ * 双行标题只占 ~48dp 却撑着 64dp 的栏高，上下各余一截空白。改成单行后栏高由 48dp 的
+ * 图标按钮撑起，省出的纵向空间全部让给课表网格。高度只定下限（heightIn），系统大字模式下
+ * 随内容自增，不裁字。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SemesterTitle(
+private fun ScheduleTopBar(
     weekText: String,
     semester: String,
     clickable: Boolean,
-    onClick: () -> Unit,
+    onTitleClick: () -> Unit,
+    onJumpToday: () -> Unit,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
 ) {
-    Column(
-        modifier = if (clickable) {
-            Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onClick)
-                .padding(horizontal = 6.dp, vertical = 2.dp)
-        } else {
-            Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-        },
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .windowInsetsPadding(TopAppBarDefaults.windowInsets)
+            .heightIn(min = 48.dp)
+            .padding(start = 10.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = weekText,
-            style = MaterialTheme.typography.titleLarge,
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = semester,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (clickable) {
-                Icon(
-                    imageVector = Icons.Outlined.ExpandMore,
-                    contentDescription = "切换学期",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp),
+        // Box 撑满剩余宽度，点击区（ripple）仍只包住标题内容本身，不随空白拉宽
+        Box(
+            modifier = Modifier.weight(1f),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Row(
+                modifier = if (clickable) {
+                    Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onTitleClick)
+                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                } else {
+                    Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = weekText,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                    modifier = Modifier.alignByBaseline(),
                 )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = semester,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    // fill=false：学期名短时行随内容收窄，窄屏放不下时才压缩出省略号
+                    modifier = Modifier
+                        .alignByBaseline()
+                        .weight(1f, fill = false),
+                )
+                if (clickable) {
+                    Spacer(Modifier.width(2.dp))
+                    Icon(
+                        imageVector = Icons.Outlined.ExpandMore,
+                        contentDescription = "切换学期",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
             }
         }
+        IconButton(onClick = onJumpToday) {
+            Icon(Icons.Outlined.Today, contentDescription = stringResource(R.string.schedule_today))
+        }
+        RefreshIconButton(isRefreshing = isRefreshing, onClick = onRefresh)
     }
 }
 
@@ -503,7 +535,7 @@ private fun WeekdayHeader(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(vertical = 6.dp),
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Spacer(Modifier.width(LEFT_LABEL_WIDTH))
