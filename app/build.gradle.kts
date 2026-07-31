@@ -42,8 +42,8 @@ android {
         // versionCode 编码：major*100000 + minor*100 + patch（1.0.0 → 100000）。
         // 加宽过一次编码：versionCode 只能单调递增，历史安装包已用到更小的旧编码值，
         // 不要改回更窄的公式或调小数值，否则老用户覆盖安装会被 Android 拒绝。
-        versionCode = 100001
-        versionName = "1.0.1"
+        versionCode = 100002
+        versionName = "1.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
