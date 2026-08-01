@@ -1124,6 +1124,35 @@ private fun AboutDialog(
                     taglineText,
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                Spacer(Modifier.height(8.dp))
+                val externalLinksText = remember(primaryColor) {
+                    val linkStyles = TextLinkStyles(
+                        style = SpanStyle(
+                            color = primaryColor,
+                            textDecoration = TextDecoration.Underline,
+                        ),
+                    )
+                    buildAnnotatedString {
+                        withLink(
+                            LinkAnnotation.Url(url = "https://jsb.jxnu-publish.asia/", styles = linkStyles),
+                        ) {
+                            append("官网")
+                        }
+                        append(" · ")
+                        withLink(
+                            LinkAnnotation.Url(
+                                url = "https://github.com/xmy3/jxnu-jiangshiban",
+                                styles = linkStyles,
+                            ),
+                        ) {
+                            append("GitHub 源码与反馈")
+                        }
+                    }
+                }
+                Text(
+                    externalLinksText,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
                 Spacer(Modifier.height(12.dp))
                 Text(
                     "所有数据仅取自学校教务系统并保存在本机，App 不上传、不收集任何用户数据。",
