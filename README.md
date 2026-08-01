@@ -3,6 +3,7 @@
   <h1>江师办</h1>
   <p><strong>江西师范大学 · 掌上教务</strong></p>
   <p>
+    <a href="https://jsb.jxnu-publish.asia/"><img src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-jsb.jxnu--publish.asia-A91D34" alt="官网"></a>
     <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/xmy3/jxnu-jiangshiban?label=%E6%9C%80%E6%96%B0%E7%89%88&color=A91D34" alt="最新版"></a>
     <a href="../../actions/workflows/android.yml"><img src="https://github.com/xmy3/jxnu-jiangshiban/actions/workflows/android.yml/badge.svg" alt="CI"></a>
     <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" alt="Android 8.0+">
@@ -29,7 +30,7 @@
 
 ## 安装
 
-Android 8.0 以上，去 [Releases](../../releases) 下载 APK。
+Android 8.0 以上，从[官网](https://jsb.jxnu-publish.asia/)或 [Releases](../../releases) 下载 APK——两边是同一个包，官网页面标注了 SHA-256 可自行校验。
 
 ## 自己编译
 
