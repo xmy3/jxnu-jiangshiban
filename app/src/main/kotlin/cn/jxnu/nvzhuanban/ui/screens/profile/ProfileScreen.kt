@@ -47,6 +47,7 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Widgets
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -124,6 +125,9 @@ import cn.jxnu.nvzhuanban.ui.widget.requestPinTodayScheduleWidget
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
+
+/** 官网首页即下载页（APK 与 GitHub Release 同包同 SHA）；更新弹窗与关于页共用。 */
+private const val OFFICIAL_WEBSITE_URL = "https://jsb.jxnu-publish.asia/"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -302,7 +306,11 @@ fun ProfileScreen(
     if (showUpdateDialog && pendingRelease != null) {
         UpdateDialog(
             release = pendingRelease,
-            onUpdate = {
+            onWebsiteDownload = {
+                openExternalHttpUrl(context, OFFICIAL_WEBSITE_URL)
+                showUpdateDialog = false
+            },
+            onGitHubDownload = {
                 openExternalHttpUrl(context, pendingRelease.htmlUrl)
                 showUpdateDialog = false
             },
@@ -1134,7 +1142,7 @@ private fun AboutDialog(
                     )
                     buildAnnotatedString {
                         withLink(
-                            LinkAnnotation.Url(url = "https://jsb.jxnu-publish.asia/", styles = linkStyles),
+                            LinkAnnotation.Url(url = OFFICIAL_WEBSITE_URL, styles = linkStyles),
                         ) {
                             append("官网")
                         }
@@ -1195,9 +1203,10 @@ private fun AboutDialog(
 }
 
 /**
- * 「发现新版本」对话框。仿 [AboutDialog] 的 `text + 底部 TextButton` 排版 —— "跳过此版本"
- * 不挤进 confirm/dismiss 槽位（Material3 AlertDialog 标准是两按钮），而是放在 text 底部
- * 当 secondary action，跟 AboutDialog 的"查看完整隐私说明"位置一致。
+ * 「发现新版本」对话框。官网与 GitHub 双下载渠道：**官网是默认渠道**，占 confirm 槽并用
+ * 实心 [Button] 凸显（官网 APK 与 GitHub Release 同包同 SHA，但国内直连更快）；GitHub
+ * 降级为 text 区底部的 secondary action，与"跳过此版本"同排——排版沿用 [AboutDialog]
+ * 的 `text + 底部 TextButton` 模式。
  *
  * Release notes 不做 Markdown 渲染（项目无 markdown 解析依赖），直接展示原文。多数 release
  * 的 `### 标题` / `- 列表项` 字面量虽然不好看但仍可读，且不掺第三方依赖。
@@ -1205,7 +1214,8 @@ private fun AboutDialog(
 @Composable
 private fun UpdateDialog(
     release: AppRelease,
-    onUpdate: () -> Unit,
+    onWebsiteDownload: () -> Unit,
+    onGitHubDownload: () -> Unit,
     onSkip: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -1229,16 +1239,25 @@ private fun UpdateDialog(
                     )
                     Spacer(Modifier.height(8.dp))
                 }
-                TextButton(
-                    onClick = onSkip,
-                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
-                ) {
-                    Text("跳过此版本", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = onGitHubDownload,
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
+                    ) {
+                        Text("从 GitHub 下载", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    TextButton(
+                        onClick = onSkip,
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
+                    ) {
+                        Text("跳过此版本", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onUpdate) { Text("立即更新") }
+            Button(onClick = onWebsiteDownload) { Text("官网下载") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("稍后") }

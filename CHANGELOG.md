@@ -2,6 +2,11 @@
 
 记录江师办 Android 客户端的版本变更。版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)，`versionCode` 编码规则为 `major*100000 + minor*100 + patch`（例：1.0.0 → 100000）。**边界：patch ≤ 99、minor ≤ 999**；versionCode 只能单调递增，不要改窄公式或调小数值。
 
+## [1.0.3] - 2026-08-02
+
+### 功能
+- 应用内更新新增**官网下载渠道**（[jsb.jxnu-publish.asia](https://jsb.jxnu-publish.asia/)）并作为默认入口：更新弹窗主按钮改为「官网下载」，国内直连更快；GitHub 渠道保留为次级入口「从 GitHub 下载」。官网 APK 与 GitHub Release 同包同 SHA-256。
+
 ## [1.0.2] - 2026-08-01
 
 ### 界面
