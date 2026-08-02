@@ -3,14 +3,15 @@ package cn.jxnu.nvzhuanban.ui.screens.announcement
 import android.content.Context
 import android.content.Intent
 import androidx.annotation.StringRes
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -59,7 +60,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -75,7 +80,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -94,6 +101,7 @@ import cn.jxnu.nvzhuanban.ui.components.RemoteJwcImage
 import cn.jxnu.nvzhuanban.ui.components.StateScaffold
 import java.net.URI
 import kotlin.math.pow
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -409,44 +417,52 @@ private fun ImageBlockView(
     }
 }
 
+/** 统一列宽的下限 / 上限：窄列（如序号）不至于被挤没；超长文本列在格内换行，而不是把整行拖成无尽横滚。 */
+private val TABLE_CELL_MIN_WIDTH = 48.dp
+private val TABLE_CELL_MAX_WIDTH = 280.dp
+
+/** 表格自然宽超出视口不足 10% 时，压缩列宽挤进屏内（格内多折一两行），免得为几十 dp 拖一条横滚。 */
+private const val TABLE_FIT_TOLERANCE = 1.1f
+
 @Composable
 private fun TableBlockView(rows: List<List<List<InlineRun>>>) {
     if (rows.isEmpty()) return
     val columnCount = rows.maxOf { it.size }
+    if (columnCount == 0) return
     val scroll = rememberScrollState()
+    val surfaceColor = MaterialTheme.colorScheme.surface
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        color = surfaceColor,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Column(modifier = Modifier.horizontalScroll(scroll)) {
-            rows.forEachIndexed { rowIndex, row ->
-                if (rowIndex > 0) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        // BoxWithConstraints 只为拿视口宽：TableGrid 的列宽适配（拉伸铺满 / 压进屏内 / 横滚）
+        // 需要真实可用宽度，而 horizontalScroll 内侧的测量约束是无限宽，拿不到。
+        BoxWithConstraints {
+            val viewportWidth = maxWidth
+            TableGrid(
+                rows = rows,
+                columnCount = columnCount,
+                viewportWidth = viewportWidth,
+                modifier = Modifier.horizontalScroll(scroll),
+            )
+            // 表格宽于视口时，可继续滚的方向盖一条渐变遮沿提示「屏外还有列」。
+            // 纯 background、无手势 modifier，不参与命中测试，不挡横滚手势与文本选择。
+            Box(Modifier.matchParentSize()) {
+                if (scroll.canScrollBackward) {
+                    TableEdgeFade(
+                        surfaceColor = surfaceColor,
+                        leading = true,
+                        modifier = Modifier.align(Alignment.CenterStart),
+                    )
                 }
-                Row(
-                    modifier = Modifier
-                        // IntrinsicSize.Min 让竖直分隔线 fillMaxHeight 跟满整行——
-                        // 多行单元格的行高不再被定高分隔线「截断」
-                        .height(IntrinsicSize.Min)
-                        .background(
-                            if (rowIndex == 0) MaterialTheme.colorScheme.surfaceContainerHigh
-                            else MaterialTheme.colorScheme.surface,
-                        ),
-                ) {
-                    repeat(columnCount) { col ->
-                        if (col > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .fillMaxHeight()
-                                    .background(MaterialTheme.colorScheme.outlineVariant),
-                            )
-                        }
-                        val cell = row.getOrNull(col).orEmpty()
-                        TableCellView(cell, isHeader = rowIndex == 0)
-                    }
+                if (scroll.canScrollForward) {
+                    TableEdgeFade(
+                        surfaceColor = surfaceColor,
+                        leading = false,
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                    )
                 }
             }
         }
@@ -454,7 +470,109 @@ private fun TableBlockView(rows: List<List<List<InlineRun>>>) {
 }
 
 @Composable
-private fun TableCellView(runs: List<InlineRun>, isHeader: Boolean) {
+private fun TableEdgeFade(surfaceColor: Color, leading: Boolean, modifier: Modifier = Modifier) {
+    val colors =
+        if (leading) listOf(surfaceColor, Color.Transparent)
+        else listOf(Color.Transparent, surfaceColor)
+    Box(
+        modifier
+            .fillMaxHeight()
+            .width(20.dp)
+            .background(Brush.horizontalGradient(colors)),
+    )
+}
+
+/**
+ * 统一列宽的表格网格。
+ *
+ * 旧实现是「每行独立 Row、单元格各按自身内容 intrinsic 定宽」——同一列在不同行里宽度不一，
+ * 整张表列不对齐、行尾参差。这里改为两遍布局：
+ * 1. 列宽 = 整列最宽单元格的单行 intrinsic 宽，夹进 [TABLE_CELL_MIN_WIDTH]..[TABLE_CELL_MAX_WIDTH]；
+ *    再按视口适配——比视口窄按比例拉伸铺满，略宽（≤10%）按比例压进视口，真正的宽表保持原宽横滚。
+ * 2. 行高 = 该行各单元格在最终列宽下的换行高度取最大，单元格按 Constraints.fixed 撑满自己的格子，
+ *    格线与表头底色因此天然贯满整行（不再需要 IntrinsicSize.Min + fillMaxHeight 的分隔线技巧）。
+ */
+@Composable
+private fun TableGrid(
+    rows: List<List<List<InlineRun>>>,
+    columnCount: Int,
+    viewportWidth: Dp,
+    modifier: Modifier = Modifier,
+) {
+    Layout(
+        modifier = modifier,
+        content = {
+            rows.forEachIndexed { rowIndex, row ->
+                repeat(columnCount) { col ->
+                    TableCellView(
+                        runs = row.getOrNull(col).orEmpty(),
+                        isHeader = rowIndex == 0,
+                        drawEndBorder = col < columnCount - 1,
+                        drawBottomBorder = rowIndex < rows.lastIndex,
+                    )
+                }
+            }
+        },
+    ) { measurables, _ ->
+        val minColPx = TABLE_CELL_MIN_WIDTH.roundToPx()
+        val maxColPx = TABLE_CELL_MAX_WIDTH.roundToPx()
+        val rowCount = measurables.size / columnCount
+
+        val colWidths = IntArray(columnCount)
+        measurables.forEachIndexed { index, cell ->
+            val col = index % columnCount
+            colWidths[col] = maxOf(colWidths[col], cell.maxIntrinsicWidth(Constraints.Infinity))
+        }
+        for (col in 0 until columnCount) {
+            colWidths[col] = colWidths[col].coerceIn(minColPx, maxColPx)
+        }
+
+        val naturalWidth = colWidths.sum()
+        val viewportPx = viewportWidth.roundToPx()
+        if (viewportPx > 0 && naturalWidth != viewportPx && naturalWidth <= viewportPx * TABLE_FIT_TOLERANCE) {
+            val scale = viewportPx.toFloat() / naturalWidth
+            var used = 0
+            for (col in 0 until columnCount) {
+                // 末列吃掉舍入误差，保证总宽恰好等于视口
+                val width =
+                    if (col == columnCount - 1) (viewportPx - used).coerceAtLeast(0)
+                    else (colWidths[col] * scale).roundToInt()
+                colWidths[col] = width
+                used += width
+            }
+        }
+
+        val rowHeights = IntArray(rowCount)
+        measurables.forEachIndexed { index, cell ->
+            val row = index / columnCount
+            rowHeights[row] = maxOf(rowHeights[row], cell.minIntrinsicHeight(colWidths[index % columnCount]))
+        }
+
+        val placeables = measurables.mapIndexed { index, cell ->
+            cell.measure(Constraints.fixed(colWidths[index % columnCount], rowHeights[index / columnCount]))
+        }
+        layout(colWidths.sum(), rowHeights.sum()) {
+            var y = 0
+            var index = 0
+            for (row in 0 until rowCount) {
+                var x = 0
+                for (col in 0 until columnCount) {
+                    placeables[index++].place(x, y)
+                    x += colWidths[col]
+                }
+                y += rowHeights[row]
+            }
+        }
+    }
+}
+
+@Composable
+private fun TableCellView(
+    runs: List<InlineRun>,
+    isHeader: Boolean,
+    drawEndBorder: Boolean,
+    drawBottomBorder: Boolean,
+) {
     val context = LocalContext.current
     val linkColor = MaterialTheme.colorScheme.primary
     val baseColor = MaterialTheme.colorScheme.onSurface
@@ -476,16 +594,42 @@ private fun TableCellView(runs: List<InlineRun>, isHeader: Boolean) {
             openExternalHttpUrl(context, url)
         }
     }
+    val borderColor = MaterialTheme.colorScheme.outlineVariant
     Box(
         modifier = Modifier
-            // 限最大宽：超长单元格在格内换行阅读，而不是把整行拖成一条无尽的横滚长龙
-            .widthIn(min = 80.dp, max = 280.dp)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .then(
+                if (isHeader) Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                else Modifier,
+            )
+            // 单元格被 TableGrid 以 Constraints.fixed 撑满格子，右缘 / 下缘各画一条格线；
+            // 列宽统一后相邻格子的线首尾相接，拼成贯通对齐的网格线
+            .drawBehind {
+                val stroke = 1.dp.toPx()
+                if (drawEndBorder) {
+                    drawLine(
+                        color = borderColor,
+                        start = Offset(size.width - stroke / 2, 0f),
+                        end = Offset(size.width - stroke / 2, size.height),
+                        strokeWidth = stroke,
+                    )
+                }
+                if (drawBottomBorder) {
+                    drawLine(
+                        color = borderColor,
+                        start = Offset(0f, size.height - stroke / 2),
+                        end = Offset(size.width, size.height - stroke / 2),
+                        strokeWidth = stroke,
+                    )
+                }
+            }
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             text = annotated,
             style = MaterialTheme.typography.bodyMedium,
             color = baseColor,
+            textAlign = TextAlign.Center,
         )
     }
 }
