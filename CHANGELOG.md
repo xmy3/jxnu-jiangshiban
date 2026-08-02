@@ -2,10 +2,18 @@
 
 记录江师办 Android 客户端的版本变更。版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)，`versionCode` 编码规则为 `major*100000 + minor*100 + patch`（例：1.0.0 → 100000）。**边界：patch ≤ 99、minor ≤ 999**；versionCode 只能单调递增，不要改窄公式或调小数值。
 
+## [1.0.4] - 2026-08-02
+
+### 功能
+- 应用内官网入口随官网域名迁移指向 [jsb.betterjxnu.cn](https://jsb.betterjxnu.cn/)：「关于」对话框官网链接与更新弹窗「官网下载」按钮均切换到新域名。
+
+### 界面
+- 通知详情内嵌表格重排版：同一列在所有行里对齐等宽（原先各行单元格宽度各自为政，名单类表格列错位、行尾参差）；表格比屏幕窄时拉伸铺满、略宽时自动压进屏内，真正的宽表保持横向滚动并在可滚方向显示渐变提示；单元格文字居中，贴近公文表格排版。
+
 ## [1.0.3] - 2026-08-02
 
 ### 功能
-- 应用内更新新增**官网下载渠道**（[jsb.jxnu-publish.asia](https://jsb.jxnu-publish.asia/)）并作为默认入口：更新弹窗主按钮改为「官网下载」，国内直连更快；GitHub 渠道保留为次级入口「从 GitHub 下载」。官网 APK 与 GitHub Release 同包同 SHA-256。
+- 应用内更新新增**官网下载渠道**（[jsb.betterjxnu.cn](https://jsb.betterjxnu.cn/)）并作为默认入口：更新弹窗主按钮改为「官网下载」，国内直连更快；GitHub 渠道保留为次级入口「从 GitHub 下载」。官网 APK 与 GitHub Release 同包同 SHA-256。
 
 ## [1.0.2] - 2026-08-01
 
