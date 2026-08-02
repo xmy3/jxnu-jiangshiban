@@ -127,7 +127,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 
 /** 官网首页即下载页（APK 与 GitHub Release 同包同 SHA）；更新弹窗与关于页共用。 */
-private const val OFFICIAL_WEBSITE_URL = "https://jsb.jxnu-publish.asia/"
+private const val OFFICIAL_WEBSITE_URL = "https://jsb.betterjxnu.cn/"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
