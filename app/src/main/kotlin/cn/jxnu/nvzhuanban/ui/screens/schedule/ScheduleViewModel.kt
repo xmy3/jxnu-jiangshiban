@@ -5,11 +5,15 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.updateAll
+import cn.jxnu.nvzhuanban.data.model.AuthState
 import cn.jxnu.nvzhuanban.data.model.Course
+import cn.jxnu.nvzhuanban.data.model.EveningStudy
 import cn.jxnu.nvzhuanban.data.model.SemesterPhase
 import cn.jxnu.nvzhuanban.data.network.toUserMessage
 import cn.jxnu.nvzhuanban.data.network.pages.SchedulePage
+import cn.jxnu.nvzhuanban.data.repository.AuthRepository
 import cn.jxnu.nvzhuanban.data.repository.ScheduleRepository
+import cn.jxnu.nvzhuanban.data.storage.EveningStudyStore
 import cn.jxnu.nvzhuanban.data.widget.ScheduleSnapshot
 import cn.jxnu.nvzhuanban.data.widget.WidgetSnapshotStore
 import cn.jxnu.nvzhuanban.ui.components.UiState
@@ -70,6 +74,14 @@ data class ScheduleScreenState(
     val currentWeek: Int? = null,
     /** 非 null = 假期语境，UI 显示假期横幅（本学期已结束 / 距开学倒计时），详见 [VacationInfo]。 */
     val vacation: VacationInfo? = null,
+    /**
+     * 大一晚自习已选的周几集合（1=周一 … 7=周日）。null = 不适用（非大一学年学期 /
+     * 离线兜底态 / 登录态不明）；空集 = 大一学期但尚未设置 → 网格显示引导占位卡；
+     * 非空 = 已设置（合成卡已由仓库层注入 [data]）。
+     */
+    val eveningStudyDays: Set<Int>? = null,
+    /** 晚自习 W 楼教室号（4 位数字串，如 `1203`）；null = 未填或不适用。编辑面板回填用。 */
+    val eveningStudyRoom: String? = null,
 )
 
 class ScheduleViewModel(application: Application) : AndroidViewModel(application) {
@@ -93,6 +105,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     private val _state = MutableStateFlow(
         run {
             val ts = deriveTimeState()
+            val es = deriveEveningStudy()
             baselineWeek = ts.baselineWeek
             ScheduleScreenState(
                 selectedWeek = ts.baselineWeek,
@@ -103,6 +116,8 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 semesterStart = repo.currentSemesterStart(),
                 currentWeek = ts.currentWeek,
                 vacation = ts.vacation,
+                eveningStudyDays = es.days,
+                eveningStudyRoom = es.roomDigits,
             )
         },
     )
@@ -190,6 +205,22 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    /** 晚自习 state 字段的派生结果；days = null 即整体不适用。 */
+    private data class EveningStudyState(val days: Set<Int>?, val roomDigits: String?)
+
+    /**
+     * 晚自习 state 字段的统一取值：仅「登录用户是大一（按学号）且当前选中学期属于其大一学年」
+     * 时 days 非 null（此时为已设置的周几集合，空集 = 未设置）。与仓库层 applyEveningStudy 的
+     * 注入条件同源（EveningStudy.isFreshmanSemester）；离线兜底路径不走这里、显式置 null。
+     */
+    private fun deriveEveningStudy(): EveningStudyState {
+        val start = repo.currentSemesterStart() ?: return EveningStudyState(null, null)
+        val studentId = runCatching { AuthRepository.instance }.getOrNull()
+            ?.state?.value?.let { (it as? AuthState.LoggedIn)?.profile?.studentId }
+        if (!EveningStudy.isFreshmanSemester(studentId, start)) return EveningStudyState(null, null)
+        return EveningStudyState(EveningStudyStore.daysFor(start), EveningStudyStore.roomFor(start))
+    }
+
     /**
      * 切换显示的教学周。仅更新 [_state]，**不**重新拉教务网 —— 江师大课表 HTML 不区分周次，
      * 同一份 list 在所有周都返回相同数据，UI 层会用 [Course.isInWeek] 重新过滤。
@@ -245,6 +276,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 repo.selectSemester(value)
                 val list = repo.getSchedule(_state.value.selectedWeek)
                 val ts = deriveTimeState()
+                val es = deriveEveningStudy()
                 baselineWeek = ts.baselineWeek
                 _state.update {
                     it.copy(
@@ -260,6 +292,8 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                         isOffline = false,
                         currentWeek = ts.currentWeek,
                         vacation = ts.vacation,
+                        eveningStudyDays = es.days,
+                        eveningStudyRoom = es.roomDigits,
                     )
                 }
                 refreshWidgetSnapshot(list)
@@ -296,6 +330,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 }
                 val list = repo.getSchedule(coercedWeek)
                 val ts = deriveTimeState()
+                val es = deriveEveningStudy()
                 baselineWeek = ts.baselineWeek
                 _state.update {
                     it.copy(
@@ -308,6 +343,8 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                         isOffline = false,
                         currentWeek = ts.currentWeek,
                         vacation = ts.vacation,
+                        eveningStudyDays = es.days,
+                        eveningStudyRoom = es.roomDigits,
                     )
                 }
                 refreshWidgetSnapshot(list)
@@ -401,6 +438,31 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    /**
+     * 保存晚自习设置：[days] 空集 = 清除（教室一并清）；[roomDigits] 是选填的 W 楼 4 位教室号。
+     * 与 [updateCourseWeeks] 同款：写本地 store 后重算当前列表（仓库层重新合成注入）再 emit，
+     * 并同步 widget 快照。
+     */
+    fun updateEveningStudy(days: Set<Int>, roomDigits: String?) {
+        repo.setEveningStudyDays(days, roomDigits)
+        viewModelScope.launch {
+            val list = runCatching { repo.getSchedule(_state.value.selectedWeek) }.getOrNull()
+            val es = deriveEveningStudy()
+            _state.update {
+                if (list != null && it.data is UiState.Success) {
+                    it.copy(
+                        data = UiState.Success(list),
+                        eveningStudyDays = es.days,
+                        eveningStudyRoom = es.roomDigits,
+                    )
+                } else {
+                    it.copy(eveningStudyDays = es.days, eveningStudyRoom = es.roomDigits)
+                }
+            }
+            if (list != null) refreshWidgetSnapshot(list)
+        }
+    }
+
     private fun loadWeek(week: Int) {
         _state.update { it.copy(data = UiState.Loading) }
         viewModelScope.launch {
@@ -409,6 +471,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 val wasFirstLoad = !hasLoadedOnce
                 hasLoadedOnce = true
                 val ts = deriveTimeState()
+                val es = deriveEveningStudy()
                 baselineWeek = ts.baselineWeek
                 _state.update {
                     it.copy(
@@ -424,6 +487,8 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                         isOffline = false,
                         currentWeek = ts.currentWeek,
                         vacation = ts.vacation,
+                        eveningStudyDays = es.days,
+                        eveningStudyRoom = es.roomDigits,
                     )
                 }
                 // 每次成功拿到课表，把"今天 + 当前周"的快照存给桌面小部件用
@@ -543,6 +608,10 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 isOffline = true,
                 currentWeek = offline.currentWeek,
                 vacation = offline.vacation,
+                // 离线态不可编辑晚自习（让位集合要联网重算），置 null 隐藏占位卡与编辑入口；
+                // 快照里已注入的晚自习卡随 data 照常显示
+                eveningStudyDays = null,
+                eveningStudyRoom = null,
             )
         }
     }

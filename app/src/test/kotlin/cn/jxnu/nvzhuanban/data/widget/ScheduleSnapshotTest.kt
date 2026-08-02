@@ -2,6 +2,8 @@ package cn.jxnu.nvzhuanban.data.widget
 
 import cn.jxnu.nvzhuanban.data.model.Course
 import cn.jxnu.nvzhuanban.data.model.CourseType
+import cn.jxnu.nvzhuanban.data.model.EveningStudy
+import cn.jxnu.nvzhuanban.data.model.isEveningStudy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -129,6 +131,35 @@ class ScheduleSnapshotTest {
         val json = ScheduleSnapshot.fromCourses("2025-2026-2", 18, LocalDate.of(2026, 3, 2), emptyList()).toJson()
         assertEquals(null, ScheduleSnapshot.fromJson(json).nextSemesterStart)
         assertEquals(null, ScheduleSnapshot.fromJson("""{"semester":"legacy"}""").nextSemesterStart)
+    }
+
+    @Test
+    fun eveningStudyCourseSurvivesJsonRoundTripAndStaysRecognizable() {
+        // 晚自习合成卡随快照落盘：名称/节次/教室/让位后的 weeks 必须保真；
+        // 还原后 id 变成 offline-…（丢掉 evening-study- 前缀），isEveningStudy 靠 name 兜底仍要认得
+        val evening = EveningStudy.synthesize(
+            days = setOf(2),
+            totalWeeks = 18,
+            courses = listOf(
+                Course(
+                    id = "c", name = "形势与政策", teacher = "王", location = "N101",
+                    weekday = 2, startSection = 10, endSection = 11, weeks = listOf(3, 4),
+                    credit = 0f,
+                ),
+            ),
+            roomDigits = "1203",
+        ).single()
+
+        val json = ScheduleSnapshot.fromCourses("2025-2026-1", 18, LocalDate.of(2025, 9, 1), listOf(evening)).toJson()
+        val restored = ScheduleSnapshot.fromJson(json).toCourses().single()
+
+        assertEquals("晚自习", restored.name)
+        assertEquals(2, restored.weekday)
+        assertEquals(10, restored.startSection)
+        assertEquals(12, restored.endSection)
+        assertEquals("W1203", restored.location)
+        assertEquals((1..18).filter { it != 3 && it != 4 }, restored.weeks)
+        assertTrue(restored.isEveningStudy)
     }
 
     private fun course(name: String, weekday: Int, weeks: List<Int>) = SnapshotCourse(

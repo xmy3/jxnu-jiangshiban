@@ -18,6 +18,8 @@ class SchedulePaletteContrastTest {
     private val palettes = mapOf(
         "light" to LightCourseColors,
         "dark" to DarkCourseColors,
+        // 晚自习专用中性组（hash 池外），对比度要求与正课一致
+        "eveningStudy" to listOf(LightEveningStudySwatch, DarkEveningStudySwatch),
     )
 
     @Test

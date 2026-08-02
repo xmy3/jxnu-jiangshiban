@@ -50,4 +50,14 @@ class ComputeFoldedDaysTest {
     fun `空课表不收起`() {
         assertEquals(emptySet<Int>(), computeFoldedDays(emptyList()))
     }
+
+    @Test
+    fun `周日只有晚自习合成卡时周日列保留`() {
+        // 晚自习经仓库层注入后就是一张普通 Course，折叠判定应把它当"周日有课"：
+        // 周六无课 → 收周六，但周日因晚自习卡保留（不收 {6,7}）
+        val eveningStudy = cn.jxnu.nvzhuanban.data.model.EveningStudy
+            .synthesize(setOf(7), totalWeeks = 18, courses = emptyList())
+        val courses = (1..5).map(::course) + eveningStudy
+        assertEquals(setOf(6), computeFoldedDays(courses))
+    }
 }

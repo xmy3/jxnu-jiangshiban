@@ -1,11 +1,14 @@
 ﻿package cn.jxnu.nvzhuanban.data.repository
 
+import cn.jxnu.nvzhuanban.data.model.AuthState
 import cn.jxnu.nvzhuanban.data.model.Course
+import cn.jxnu.nvzhuanban.data.model.EveningStudy
 import cn.jxnu.nvzhuanban.data.model.SemesterPhase
 import cn.jxnu.nvzhuanban.data.network.JwcClient
 import cn.jxnu.nvzhuanban.data.network.JxnuUrls
 import cn.jxnu.nvzhuanban.data.network.pages.SchedulePage
 import cn.jxnu.nvzhuanban.data.storage.CourseOverridesStore
+import cn.jxnu.nvzhuanban.data.storage.EveningStudyStore
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.FormBody
@@ -150,7 +153,39 @@ class ScheduleRepository(
 
     /** 江师大课表页不区分周次，所有周次返回相同的 List<Course>；接口签名保留以兼容 UI 切周。 */
     suspend fun getSchedule(week: Int): List<Course> =
-        applyWeekOverrides(enrichCourses(ensureLoaded()))
+        applyEveningStudy(applyWeekOverrides(enrichCourses(ensureLoaded())))
+
+    /**
+     * 大一学年学期追加合成的晚自习卡（详见 [EveningStudy]）。放在 [applyWeekOverrides] 之后：
+     * 「正课让位」的周集合要按用户改过周次的正课来算。每次调用现算，正课 / overrides / 设置
+     * 变化时让位结果自动跟随。仅当前用户是大一（按学号）且**当前选中学期**属于其大一学年才注入；
+     * 「看他人课表」走独立的 [UserScheduleRepository]，不经此处。
+     */
+    private fun applyEveningStudy(courses: List<Course>): List<Course> {
+        val start = currentSemesterStart() ?: return courses
+        // AuthRepository 未 init（理论上仅裸 JVM 单测）或未登录时直接跳过
+        val studentId = runCatching { AuthRepository.instance }.getOrNull()
+            ?.state?.value?.let { (it as? AuthState.LoggedIn)?.profile?.studentId }
+        if (!EveningStudy.isFreshmanSemester(studentId, start)) return courses
+        val days = EveningStudyStore.daysFor(start)
+        if (days.isEmpty()) return courses
+        return courses + EveningStudy.synthesize(
+            days = days,
+            totalWeeks = totalWeeks(),
+            courses = courses,
+            roomDigits = EveningStudyStore.roomFor(start),
+        )
+    }
+
+    /**
+     * 保存当前选中学期的晚自习设置。[days] 空集 = 清除设置（教室一并清）；[roomDigits] 是
+     * 选填的 W 楼 4 位教室号。不联网；下次 [getSchedule] 自动把合成卡注入。
+     * 学期未加载时静默忽略（UI 入口此时也不可见）。
+     */
+    fun setEveningStudyDays(days: Set<Int>, roomDigits: String?) {
+        val start = currentSemesterStart() ?: return
+        EveningStudyStore.set(start, days, roomDigits)
+    }
 
     /**
      * 用户修改某门课的实际上课周次。null/空 list = 恢复教务网默认（1..18）。

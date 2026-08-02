@@ -15,6 +15,7 @@ import cn.jxnu.nvzhuanban.data.network.pages.UserDefaultPage
 import cn.jxnu.nvzhuanban.data.storage.AnnouncementReadAnchor
 import cn.jxnu.nvzhuanban.data.storage.AvatarPrefs
 import cn.jxnu.nvzhuanban.data.storage.CourseOverridesStore
+import cn.jxnu.nvzhuanban.data.storage.EveningStudyStore
 import cn.jxnu.nvzhuanban.data.storage.PeopleSearchHistoryStore
 import cn.jxnu.nvzhuanban.data.widget.WidgetSnapshotStore
 import cn.jxnu.nvzhuanban.ui.components.clearDecodedImageCache
@@ -349,6 +350,7 @@ class AuthRepository private constructor(
      * 把所有"上一用户"留下的派生数据清空：
      *  - 全部业务 Repository 单例的内存缓存（见 [clearRepositoryCaches]，新增 repo 记得挂进去）
      *  - 课程周次本地覆盖（CourseOverridesStore）
+     *  - 大一晚自习设置（EveningStudyStore）—— 晚自习周几是上一用户的个人安排
      *  - 通知已读锚点（AnnouncementReadAnchor）—— 否则下一用户继承上一用户的"最后已读"
      *  - 桌面 widget snapshot 文件 —— 否则锁屏小部件还在显示上一用户的今日课表
      *  - 图片缓存（内存解码位图 + OkHttp 磁盘缓存）—— 否则上一用户的头像 / 师生照片跨账号残留
@@ -358,6 +360,7 @@ class AuthRepository private constructor(
     private suspend fun clearAllUserDataOnSignOut() {
         clearRepositoryCaches()
         CourseOverridesStore.clearAll()
+        EveningStudyStore.clearAll()
         PeopleSearchHistoryStore.clearAll()
         AnnouncementReadAnchor.clear()
         clearWidgetSnapshotOnSignOut()

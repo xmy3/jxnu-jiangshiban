@@ -44,6 +44,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -62,7 +63,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cn.jxnu.nvzhuanban.data.model.Course
+import cn.jxnu.nvzhuanban.data.model.EveningStudy
 import cn.jxnu.nvzhuanban.data.model.SectionTimetable
+import cn.jxnu.nvzhuanban.data.model.isEveningStudy
 import cn.jxnu.nvzhuanban.data.storage.ScheduleHeightPrefs
 import kotlinx.coroutines.delay
 import java.time.LocalTime
@@ -89,6 +92,12 @@ internal fun ScheduleGrid(
     onCourseClick: (Course) -> Unit,
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
+    /**
+     * 「设置晚自习」引导占位卡所在列（1=周一 … 7=周日）；null = 不显示。
+     * 仅大一学期且晚自习尚未设置时非 null，由上层用 [EveningStudy.placeholderDay] 算好传入。
+     */
+    eveningPlaceholderDay: Int? = null,
+    onEveningPlaceholderClick: () -> Unit = {},
 ) {
     // 阈值用 px：滑动距离超过 ~80dp 才认为是切周，避免误触
     val swipeThresholdPx = with(LocalDensity.current) { 80.dp.toPx() }
@@ -203,6 +212,8 @@ internal fun ScheduleGrid(
                     highlight = if (day == todayWeekday) highlightState else null,
                     onCourseClick = onCourseClick,
                     sectionHeightDp = sectionHeightDp,
+                    showEveningPlaceholder = day == eveningPlaceholderDay,
+                    onEveningPlaceholderClick = onEveningPlaceholderClick,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -254,6 +265,8 @@ private fun DayColumn(
     highlight: HighlightedCourse?,
     onCourseClick: (Course) -> Unit,
     sectionHeightDp: () -> Float,
+    showEveningPlaceholder: Boolean,
+    onEveningPlaceholderClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -291,6 +304,62 @@ private fun DayColumn(
                 onClick = { onCourseClick(course) },
             )
         }
+        if (showEveningPlaceholder) {
+            EveningStudyPlaceholderCard(
+                sectionHeightDp = sectionHeightDp,
+                onClick = onEveningPlaceholderClick,
+            )
+        }
+    }
+}
+
+/**
+ * 大一学期晚自习尚未设置时，晚间第 10–12 节位置的引导占位卡：虚线描边幽灵样式，
+ * 点击弹晚自习编辑面板。定位/定高与 [CourseCard] 同一套布局期读高度纪律。
+ */
+@Composable
+private fun EveningStudyPlaceholderCard(
+    sectionHeightDp: () -> Float,
+    onClick: () -> Unit,
+) {
+    val outline = MaterialTheme.colorScheme.outline
+    Box(
+        modifier = Modifier
+            .offset {
+                IntOffset(0, (sectionHeightDp() * (EveningStudy.START_SECTION - 1)).dp.roundToPx())
+            }
+            .sectionHeight(EveningStudy.END_SECTION - EveningStudy.START_SECTION + 1, sectionHeightDp)
+            .fillMaxWidth()
+            .padding(2.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .drawBehind {
+                val stroke = 1.dp.toPx()
+                drawRoundRect(
+                    color = outline,
+                    topLeft = Offset(stroke / 2f, stroke / 2f),
+                    size = Size(size.width - stroke, size.height - stroke),
+                    style = Stroke(
+                        width = stroke,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx())),
+                    ),
+                    cornerRadius = CornerRadius(10.dp.toPx() - stroke / 2f),
+                )
+            }
+            .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                contentDescription =
+                    "设置晚自习，${EveningStudy.START_LABEL}到${EveningStudy.END_LABEL}"
+            }
+            .padding(6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "＋\n晚自习",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
@@ -397,24 +466,39 @@ private fun CourseCard(
             // 教室号必须完整且单行：宽度不够时自动缩小字号（9sp → 最低 5sp）而不是截断。
             // 上限放到 11sp——周末列折叠后工作日列变宽，短教室号能显示得更大更清楚。
             // BasicText 的 autoSize 在 measure 期逐级试字号，不会引起额外重组。
-            BasicText(
-                text = "@${course.location}",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 11.sp,
-                    color = swatch.onContainer,
-                ),
-                maxLines = 1,
-                softWrap = false,
-                autoSize = TextAutoSize.StepBased(
-                    minFontSize = 5.sp,
-                    maxFontSize = 11.sp,
-                    stepSize = 0.5.sp,
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            if (teacherMaxLines > 0 && course.teacher.isNotBlank()) {
+            // 晚自习卡：填了教室（W 楼）走地点行，时间移到下方 teacher 槽位；没填教室则这一行直接显示时段。
+            val subLine = when {
+                course.location.isNotBlank() -> "@${course.location}"
+                course.isEveningStudy -> "${EveningStudy.START_LABEL}-${EveningStudy.END_LABEL}"
+                else -> null
+            }
+            if (subLine != null) {
+                BasicText(
+                    text = subLine,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 11.sp,
+                        color = swatch.onContainer,
+                    ),
+                    maxLines = 1,
+                    softWrap = false,
+                    autoSize = TextAutoSize.StepBased(
+                        minFontSize = 5.sp,
+                        maxFontSize = 11.sp,
+                        stepSize = 0.5.sp,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            // 第三行：正课显示教师；晚自习在填了教室后把时段挪到这里（teacher 恒空，槽位空闲）
+            val thirdLine = when {
+                course.teacher.isNotBlank() -> course.teacher
+                course.isEveningStudy && course.location.isNotBlank() ->
+                    "${EveningStudy.START_LABEL}-${EveningStudy.END_LABEL}"
+                else -> null
+            }
+            if (teacherMaxLines > 0 && thirdLine != null) {
                 Text(
-                    text = course.teacher,
+                    text = thirdLine,
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                     color = swatch.onContainer,
                     maxLines = teacherMaxLines,
@@ -435,12 +519,17 @@ private fun CourseCard(
  */
 private data class HighlightedCourse(val courseId: String, val tag: String)
 
+/** 结束时刻（当日分钟）：晚自习按实际的 21:00，正课按节次表的下课时间。 */
+private fun endMinutesOf(course: Course): Int =
+    if (course.isEveningStudy) EveningStudy.END_MINUTES
+    else SectionTimetable.endMinutes(course.endSection)
+
 private fun computeHighlight(coursesToday: List<Course>, now: LocalTime): HighlightedCourse? {
     if (coursesToday.isEmpty()) return null
     val nowMin = now.hour * 60 + now.minute
 
     val ongoing = coursesToday.firstOrNull { c ->
-        nowMin in SectionTimetable.startMinutes(c.startSection)..SectionTimetable.endMinutes(c.endSection)
+        nowMin in SectionTimetable.startMinutes(c.startSection)..endMinutesOf(c)
     }
     if (ongoing != null) return HighlightedCourse(ongoing.id, "上课中")
 

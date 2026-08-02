@@ -6,6 +6,7 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import cn.jxnu.nvzhuanban.data.model.Course
+import cn.jxnu.nvzhuanban.data.model.isEveningStudy
 
 /**
  * 课表课程卡配色：固定亮 / 暗两套 12 组，随应用实际生效的主题自动切换，无用户手选。
@@ -64,8 +65,15 @@ internal val DarkCourseColors: List<CourseSwatch> = listOf(
 )
 
 /**
+ * 晚自习专用配色（亮 / 暗各一组），刻意放在 12 色 hash 池**之外**：中性石板灰标识
+ * 「非正课」，且不会与任何 hash 取色的正课撞色。对比度同受 SchedulePaletteContrastTest 强制。
+ */
+internal val LightEveningStudySwatch = CourseSwatch(Color(0xFFE4E4E9), Color(0xFF3A3A44))
+internal val DarkEveningStudySwatch = CourseSwatch(Color(0xFF46464F), Color.White)
+
+/**
  * 通过课程名称的稳定 hash 派生配色，让同名课程颜色一致；亮暗两套同下标同色相，
- * 主题切换不会打乱"哪两门课撞色"的相对关系。
+ * 主题切换不会打乱"哪两门课撞色"的相对关系。晚自习卡不参与 hash，恒取专用中性组。
  *
  * 暗色判定读**已应用的 MaterialTheme 背景亮度**，而不是复刻 Theme.kt 里 ThemeMode 的解析——
  * 与实际生效主题（SYSTEM 跟随 / LIGHT / DARK 强制、Material You 动态取色）天然一致，不会漂移。
@@ -73,9 +81,11 @@ internal val DarkCourseColors: List<CourseSwatch> = listOf(
 @Composable
 @ReadOnlyComposable
 internal fun courseSwatch(course: Course): CourseSwatch {
-    val palette =
-        if (MaterialTheme.colorScheme.background.luminance() < 0.5f) DarkCourseColors
-        else LightCourseColors
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    if (course.isEveningStudy) {
+        return if (isDark) DarkEveningStudySwatch else LightEveningStudySwatch
+    }
+    val palette = if (isDark) DarkCourseColors else LightCourseColors
     // 用 and Int.MAX_VALUE 取非负：避免 hashCode == Int.MIN_VALUE 时 `-it` 仍为负 → % 出负 index → 越界
     val idx = (course.name.hashCode() and Int.MAX_VALUE) % palette.size
     return palette[idx]

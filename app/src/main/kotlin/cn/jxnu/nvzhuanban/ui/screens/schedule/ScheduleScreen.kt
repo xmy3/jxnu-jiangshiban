@@ -58,7 +58,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cn.jxnu.nvzhuanban.R
 import cn.jxnu.nvzhuanban.data.model.Course
+import cn.jxnu.nvzhuanban.data.model.EveningStudy
 import cn.jxnu.nvzhuanban.data.model.SemesterPhase
+import cn.jxnu.nvzhuanban.data.model.isEveningStudy
 import cn.jxnu.nvzhuanban.data.network.pages.SchedulePage
 import cn.jxnu.nvzhuanban.ui.components.RefreshIconButton
 import cn.jxnu.nvzhuanban.ui.components.StateScaffold
@@ -197,8 +199,9 @@ fun ScheduleScreen(
     var selectedCourse by remember { mutableStateOf<Course?>(null) }
     var editingWeeksFor by remember { mutableStateOf<Course?>(null) }
     var showSemesterSheet by remember { mutableStateOf(false) }
+    var showEveningSheet by remember { mutableStateOf(false) }
 
-    // 课程详情 / 学期选择 / 周次编辑 sheet 开着时拦截系统返回键 → 先关 sheet 而不是退出 App。
+    // 课程详情 / 学期选择 / 周次编辑 / 晚自习 sheet 开着时拦截系统返回键 → 先关 sheet 而不是退出 App。
     // ModalBottomSheet 自身在新版会响应返回键调 onDismissRequest，这里显式拦截做兜底
     BackHandler(enabled = editingWeeksFor != null) {
         editingWeeksFor = null
@@ -208,6 +211,9 @@ fun ScheduleScreen(
     }
     BackHandler(enabled = showSemesterSheet) {
         showSemesterSheet = false
+    }
+    BackHandler(enabled = showEveningSheet) {
+        showEveningSheet = false
     }
 
     // 「今天」做成可观察状态：页面驻留跨过 00:00（尤其周日→周一）后，「今」列头、今日列底色
@@ -294,15 +300,43 @@ fun ScheduleScreen(
                         }
                     }
                     if (visibleCourses.isEmpty()) {
-                        EmptyWeek(onSwipeLeft = onSwipeLeft, onSwipeRight = onSwipeRight)
+                        EmptyWeek(
+                            onSwipeLeft = onSwipeLeft,
+                            onSwipeRight = onSwipeRight,
+                            // 整学期空课表（军训期/教务未排课）时网格不渲染、占位卡无宿主，
+                            // 这里给大一未设置态留一个文字入口，否则功能整体不可达
+                            onSetupEveningStudy = if (state.eveningStudyDays?.isEmpty() == true) {
+                                { showEveningSheet = true }
+                            } else null,
+                        )
                     } else {
+                        // 大一学期晚自习待设置 → 网格晚间区域放一张「＋晚自习」引导占位卡；
+                        // 落点选第一个当周晚间无正课且未被折叠的列（全占则不显示）。
+                        // 兜底分支：已设置但所选天整学期全被正课占满（synthesize 零卡）时也显示，
+                        // 否则改/清设置的入口会随卡片一起消失（设置死角）。
+                        // eveningStudyDays 离线态恒 null，占位卡与编辑入口自然隐藏。
+                        val eveningPlaceholderDay = remember(state.eveningStudyDays, courses, visibleCourses, foldedDays) {
+                            val days = state.eveningStudyDays
+                            val showPlaceholder = days != null &&
+                                (days.isEmpty() || courses.none { it.isEveningStudy })
+                            if (showPlaceholder) EveningStudy.placeholderDay(visibleCourses, foldedDays) else null
+                        }
                         ScheduleGrid(
                             courses = visibleCourses,
                             todayWeekday = todayWeekday,
                             foldedDays = foldedDays,
-                            onCourseClick = { selectedCourse = it },
+                            onCourseClick = { course ->
+                                if (course.isEveningStudy) {
+                                    // 晚自习卡不进课程详情 Sheet；离线态（快照还原的卡）不可编辑
+                                    if (!state.isOffline) showEveningSheet = true
+                                } else {
+                                    selectedCourse = course
+                                }
+                            },
                             onSwipeLeft = onSwipeLeft,
                             onSwipeRight = onSwipeRight,
+                            eveningPlaceholderDay = eveningPlaceholderDay,
+                            onEveningPlaceholderClick = { showEveningSheet = true },
                         )
                     }
                 }
@@ -370,6 +404,31 @@ fun ScheduleScreen(
                 onSelect = { value ->
                     showSemesterSheet = false
                     viewModel.selectSemester(value)
+                },
+            )
+        }
+    }
+
+    if (showEveningSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showEveningSheet = false },
+            sheetState = sheetState,
+        ) {
+            // 整学期晚间被正课占死的天在面板里禁用（勾了也合成不出卡，还会造成设置死角）。
+            // 按全学期课表算（含晚自习合成卡，fullyBlockedDays 内部会排除它们）。
+            val allCourses = (state.data as? UiState.Success)?.data.orEmpty()
+            val blocked = remember(allCourses, state.totalWeeks) {
+                EveningStudy.fullyBlockedDays(state.totalWeeks, allCourses)
+            }
+            EveningStudySheet(
+                initialDays = state.eveningStudyDays.orEmpty(),
+                initialRoomDigits = state.eveningStudyRoom,
+                fullyBlockedDays = blocked,
+                onCancel = { showEveningSheet = false },
+                onSave = { days, roomDigits ->
+                    viewModel.updateEveningStudy(days, roomDigits)
+                    showEveningSheet = false
                 },
             )
         }
@@ -572,6 +631,8 @@ private fun WeekdayHeader(
 private fun EmptyWeek(
     onSwipeLeft: () -> Unit = {},
     onSwipeRight: () -> Unit = {},
+    /** 非 null = 大一学期且晚自习未设置：空课表页也要给一个设置入口（网格占位卡在此态无宿主）。 */
+    onSetupEveningStudy: (() -> Unit)? = null,
 ) {
     // 阈值与 ScheduleGrid 保持一致：80dp 才触发；避免下拉刷新被误判成切周
     val swipeThresholdPx = with(androidx.compose.ui.platform.LocalDensity.current) { 80.dp.toPx() }
@@ -607,6 +668,19 @@ private fun EmptyWeek(
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (onSetupEveningStudy != null) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "＋ 设置晚自习",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onSetupEveningStudy)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
         Spacer(Modifier.height(160.dp))
     }
 }
