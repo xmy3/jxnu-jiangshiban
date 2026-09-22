@@ -47,6 +47,7 @@ internal fun CourseDetailSheet(
     course: Course,
     weekTotal: Int,
     onEditWeeks: () -> Unit,
+    canEditWeeks: Boolean = true,
     onQueryTeacher: (String) -> Unit = {},
     onQueryClassroom: (String) -> Unit = {},
 ) {
@@ -119,6 +120,7 @@ internal fun CourseDetailSheet(
         // 教务网 HTML 不给周次细节，所有课默认 1..18 周；这里给用户一个本地编辑入口
         OutlinedButton(
             onClick = onEditWeeks,
+            enabled = canEditWeeks,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Icon(
@@ -127,7 +129,7 @@ internal fun CourseDetailSheet(
                 modifier = Modifier.size(18.dp),
             )
             Spacer(Modifier.width(8.dp))
-            Text("编辑周次")
+            Text(if (canEditWeeks) "编辑周次" else "联网加载课表后可编辑周次")
         }
         Spacer(Modifier.height(16.dp))
     }

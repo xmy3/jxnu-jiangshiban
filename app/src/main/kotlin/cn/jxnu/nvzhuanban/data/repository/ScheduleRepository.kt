@@ -144,7 +144,8 @@ class ScheduleRepository(
      * 否则学分补全会用错的 Course 实例对比。
      */
     private fun applyWeekOverrides(courses: List<Course>): List<Course> {
-        val overrides = CourseOverridesStore.current()
+        val start = currentSemesterStart() ?: return courses
+        val overrides = CourseOverridesStore.current(start)
         if (overrides.isEmpty()) return courses
         return courses.map { c ->
             overrides[c.name]?.let { c.copy(weeks = it) } ?: c
@@ -192,7 +193,8 @@ class ScheduleRepository(
      * 不需要重新拉教务网；下次 [getSchedule] 自动把新覆盖叠加上去。
      */
     fun setCourseWeeks(name: String, weeks: List<Int>?) {
-        CourseOverridesStore.set(name, weeks)
+        val start = currentSemesterStart() ?: return
+        CourseOverridesStore.set(start, name, weeks)
     }
 
     /**

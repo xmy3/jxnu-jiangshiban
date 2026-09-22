@@ -54,7 +54,7 @@ object UserDefaultPage {
         // 优先用 HTML 里 lblUserInfor 实际渲染出的学号 —— 调用方传入的 studentId 可能是空串
         // （cookie 有效但本地没记账号的场景），此时仍能从 HTML 里把学号补出来。
         val (parsedStudentId, parsedName) = extractIdAndName(html)
-        val resolvedId = studentId.ifBlank { parsedStudentId.orEmpty() }
+        val resolvedId = studentId.ifBlank { parsedStudentId ?: extractStudentId(html).orEmpty() }
         val grade = inferGradeFromStudentId(resolvedId)
         val name = parsedName?.takeIf { it.isNotBlank() } ?: PLACEHOLDER_USER_NAME
         return UserProfile(

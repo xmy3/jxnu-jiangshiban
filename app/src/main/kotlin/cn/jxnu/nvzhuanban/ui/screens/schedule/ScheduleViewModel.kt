@@ -84,6 +84,9 @@ data class ScheduleScreenState(
     val eveningStudyRoom: String? = null,
 )
 
+internal fun canEditCourseWeeks(state: ScheduleScreenState): Boolean =
+    !state.isOffline && state.semesterStart != null && state.data is UiState.Success
+
 class ScheduleViewModel(application: Application) : AndroidViewModel(application) {
 
     // 不放进主构造器：Kotlin 默认参数不会生成 `(Application)` 重载，
@@ -427,6 +430,10 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
      * 不重新拉教务网，直接重新算当前 selectedWeek 的课列表即可——仓库层会把 override 应用上。
      */
     fun updateCourseWeeks(courseName: String, weeks: List<Int>?) {
+        if (!canEditCourseWeeks(_state.value)) {
+            _transientError.tryEmit("请联网加载课表后再编辑周次")
+            return
+        }
         repo.setCourseWeeks(courseName, weeks)
         viewModelScope.launch {
             val list = runCatching { repo.getSchedule(_state.value.selectedWeek) }.getOrNull()

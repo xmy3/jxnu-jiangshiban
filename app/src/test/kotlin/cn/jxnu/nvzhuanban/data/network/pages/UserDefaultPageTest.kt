@@ -101,6 +101,16 @@ class UserDefaultPageTest {
     }
 
     @Test
+    fun `restores student id without saved username for non-Chinese names`() {
+        val html = "<span id='lblUserInfor'>欢迎您，(2024050001,Student) Smith</span>"
+        val profile = UserDefaultPage.parse("", html)
+        assertEquals("2024050001", profile.studentId)
+        assertEquals(2024, profile.grade)
+        assertEquals("同学", profile.name)
+        assertTrue(!profile.avatarUrl.isNullOrBlank())
+    }
+
+    @Test
     fun `generates a photo url that points at jwc PhotoShow endpoint`() {
         val profile = UserDefaultPage.parse("20250101", FIXTURE_NORMAL)
         assertTrue("应当生成头像 URL", !profile.avatarUrl.isNullOrBlank())

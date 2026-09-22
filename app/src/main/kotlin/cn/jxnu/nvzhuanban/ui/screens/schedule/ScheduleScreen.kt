@@ -354,6 +354,7 @@ fun ScheduleScreen(
                 course = selectedCourse!!,
                 weekTotal = state.totalWeeks,
                 onEditWeeks = { editingWeeksFor = selectedCourse },
+                canEditWeeks = canEditCourseWeeks(state),
                 // 点教师 / 教室 → 关详情 sheet 再跳开课查询自动查。先清 selectedCourse 收起 sheet，
                 // 避免返回时 sheet 还盖在开课查询页上。学期传当前查看学期的开学日（ISO，
                 // LocalDate.toString() 即 yyyy-MM-dd），开课查询端按开学日对齐自家学期下拉；
