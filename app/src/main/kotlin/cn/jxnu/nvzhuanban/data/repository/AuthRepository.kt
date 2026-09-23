@@ -383,6 +383,7 @@ class AuthRepository private constructor(
         StudentRepository.instance.clearCache()
         StudentDetailRepository.instance.clearCache()
         CourseOfferingRepository.instance.clearCache()
+        TrainingPlanSearchRepository.instance.clearCache()
         StudentInfoCheckRepository.instance.clearCache()
     }
 

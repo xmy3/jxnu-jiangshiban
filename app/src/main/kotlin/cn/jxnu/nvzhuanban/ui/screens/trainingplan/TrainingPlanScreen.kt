@@ -27,12 +27,14 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -69,6 +71,7 @@ import cn.jxnu.nvzhuanban.ui.components.rememberTransientErrorSnackbar
 @Composable
 fun TrainingPlanScreen(
     onBack: () -> Unit,
+    onOpenSearch: () -> Unit,
     viewModel: TrainingPlanViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -81,6 +84,9 @@ fun TrainingPlanScreen(
                 title = { Text("培养方案") },
                 navigationIcon = { BackNavigationIcon(onBack) },
                 actions = {
+                    IconButton(onClick = onOpenSearch) {
+                        Icon(Icons.Outlined.Search, contentDescription = "查询全校培养方案")
+                    }
                     RefreshIconButton(isRefreshing = isRefreshing, onClick = viewModel::refresh)
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),

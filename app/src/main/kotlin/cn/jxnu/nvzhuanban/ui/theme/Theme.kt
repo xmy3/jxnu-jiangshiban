@@ -1,6 +1,7 @@
 package cn.jxnu.nvzhuanban.ui.theme
 
 import android.app.Activity
+import android.annotation.SuppressLint
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -95,6 +96,7 @@ private val NvzhuanDarkColors = darkColorScheme(
  * @param dynamicColor 是否启用 Material You 动态取色（仅 Android 12+；关闭则强制女专红）
  */
 @Composable
+@SuppressLint("NewApi") // dynamic colors are guarded by SDK_INT >= S below; AGP 8.7 lint misses the guard.
 fun NvzhuanbanTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     dynamicColor: Boolean = true,

@@ -32,6 +32,8 @@ object JxnuUrls {
     const val PAGE_EXAM = "$JWC_BASE/User/default.aspx?&code=129&&uctl=MyControl\\xfz_test_schedule.ascx"
     const val PAGE_GRADE = "$JWC_BASE/MyControl/All_Display.aspx?UserControl=xfz_cj3.ascx&Action=Personal"
     const val PAGE_GRADUATION_AUDIT = "$JWC_BASE/MyControl/All_Display.aspx?UserControl=xfz_bysh.ascx&Action=Personal"
+    /** 公共服务里的培养方案查询（与本人毕业审核页不同）。 */
+    const val PAGE_TRAINING_PLAN_SEARCH = "$JWC_BASE/User/default.aspx?&code=104&&uctl=MyControl\\all_jxjh.ascx"
 
     /** 本人学籍/身份信息校对表（我的 → 基本信息）。含考生号/身份证等强 PII，需登录会话。 */
     const val PAGE_STUDENT_INFO = "$JWC_BASE/MyControl/Student_InforCheck.aspx"

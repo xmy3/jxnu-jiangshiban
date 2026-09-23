@@ -138,6 +138,7 @@ fun ProfileScreen(
     onOpenClassroom: () -> Unit,
     onOpenExams: () -> Unit,
     onOpenTrainingPlan: () -> Unit,
+    onOpenPlanSearch: () -> Unit,
     onOpenPeopleSearch: () -> Unit,
     onOpenCalendar: () -> Unit,
     onOpenCourseOffering: () -> Unit,
@@ -237,6 +238,7 @@ fun ProfileScreen(
                         onOpenPeopleSearch = onOpenPeopleSearch,
                         onOpenCalendar = onOpenCalendar,
                         onOpenCourseOffering = onOpenCourseOffering,
+                        onOpenPlanSearch = onOpenPlanSearch,
                         onOpenTheme = { showThemeDialog = true },
                     )
                 }
@@ -616,10 +618,10 @@ private fun ToolsBlock(
     onOpenPeopleSearch: () -> Unit,
     onOpenCalendar: () -> Unit,
     onOpenCourseOffering: () -> Unit,
+    onOpenPlanSearch: () -> Unit,
     onOpenTheme: () -> Unit,
 ) {
-    // 二级功能集合：考试 / 培养方案已升级进上方数据摘要条，基本信息挂在顶部用户卡上，
-    // 这里 5 个入口单行排满。
+    // 本人培养方案在上方摘要条；这里提供全校培养方案查询。
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = AppShape.card,
@@ -630,7 +632,7 @@ private fun ToolsBlock(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 12.dp),
-            maxItemsInEachRow = 5,
+            maxItemsInEachRow = 3,
         ) {
             ToolTile(
                 icon = Icons.Outlined.CalendarMonth,
@@ -649,6 +651,12 @@ private fun ToolsBlock(
                 title = stringResource(R.string.course_offering_title),
                 modifier = Modifier.weight(1f),
                 onClick = onOpenCourseOffering,
+            )
+            ToolTile(
+                icon = Icons.Outlined.Search,
+                title = "培养方案查询",
+                modifier = Modifier.weight(1f),
+                onClick = onOpenPlanSearch,
             )
             ToolTile(
                 icon = Icons.Outlined.MeetingRoom,

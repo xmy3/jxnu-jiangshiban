@@ -69,6 +69,7 @@ import cn.jxnu.nvzhuanban.ui.screens.schedule.ScheduleScreen
 import cn.jxnu.nvzhuanban.ui.screens.students.StudentDetailScreen
 import cn.jxnu.nvzhuanban.ui.screens.teachers.TeacherDetailScreen
 import cn.jxnu.nvzhuanban.ui.screens.trainingplan.TrainingPlanScreen
+import cn.jxnu.nvzhuanban.ui.screens.trainingplan.TrainingPlanSearchScreen
 import cn.jxnu.nvzhuanban.ui.screens.userschedule.UserScheduleScreen
 
 object Routes {
@@ -80,6 +81,7 @@ object Routes {
     const val ANNOUNCEMENT = "announcement"
     const val CLASSROOM = "classroom"
     const val TRAINING_PLAN = "training_plan"
+    const val TRAINING_PLAN_SEARCH = "training_plan_search"
     const val CALENDAR = "calendar"
 
     /**
@@ -323,7 +325,13 @@ fun AppNav() {
                 ClassroomScreen(onBack = { nav.popBackStack() })
             }
             composable(Routes.TRAINING_PLAN) {
-                TrainingPlanScreen(onBack = { nav.popBackStack() })
+                TrainingPlanScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpenSearch = { nav.navigate(Routes.TRAINING_PLAN_SEARCH) },
+                )
+            }
+            composable(Routes.TRAINING_PLAN_SEARCH) {
+                TrainingPlanSearchScreen(onBack = { nav.popBackStack() })
             }
             composable(Routes.CALENDAR) {
                 CalendarScreen(
@@ -471,6 +479,7 @@ fun AppNav() {
                     onOpenClassroom = { nav.navigate(Routes.CLASSROOM) },
                     onOpenExams = { nav.navigate(Routes.EXAMS) },
                     onOpenTrainingPlan = { nav.navigate(Routes.TRAINING_PLAN) },
+                    onOpenPlanSearch = { nav.navigate(Routes.TRAINING_PLAN_SEARCH) },
                     onOpenPeopleSearch = { nav.navigate(Routes.PEOPLE_SEARCH) },
                     onOpenCalendar = { nav.navigate(Routes.CALENDAR) },
                     onOpenCourseOffering = { nav.navigate(Routes.courseOffering()) },

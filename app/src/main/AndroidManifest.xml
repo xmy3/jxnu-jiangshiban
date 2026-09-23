@@ -43,6 +43,7 @@
 
         <activity
             android:name=".MainActivity"
+            tools:ignore="Instantiatable"
             android:exported="true"
             android:theme="@style/Theme.Nvzhuanban.Splash">
             <intent-filter>
@@ -57,6 +58,7 @@
              ACTION_TICK 是 WidgetUpdateScheduler 自家排的 AlarmManager 唤醒。 -->
         <receiver
             android:name=".ui.widget.TodayScheduleWidgetReceiver"
+            tools:ignore="Instantiatable"
             android:exported="false"
             android:label="@string/widget_label">
             <intent-filter>
