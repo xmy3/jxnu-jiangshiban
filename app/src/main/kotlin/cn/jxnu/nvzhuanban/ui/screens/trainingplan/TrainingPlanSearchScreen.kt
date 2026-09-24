@@ -5,18 +5,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -50,7 +54,7 @@ fun TrainingPlanSearchScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                item { Text("按年级、学院、专业筛选", style = MaterialTheme.typography.titleMedium) }
+                item { Text("按年级、专业筛选", style = MaterialTheme.typography.titleMedium) }
                 itemsIndexed(page.filters, key = { _, filter -> filter.name }) { _, filter ->
                     FilterMenu(filter, enabled = !busy, onSelect = { viewModel.select(filter.name, it) })
                 }
@@ -86,17 +90,48 @@ private fun FilterMenu(
     onSelect: (String) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var keyword by remember { mutableStateOf("") }
     Column {
         Text(filter.label, style = MaterialTheme.typography.labelMedium)
-        OutlinedButton(onClick = { expanded = true }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(onClick = { keyword = ""; expanded = true }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
             Text(filter.options.firstOrNull { it.value == filter.selectedValue }?.label ?: "请选择")
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            filter.options.forEach { option ->
-                DropdownMenuItem(text = { Text(option.label) }, onClick = {
-                    expanded = false
-                    onSelect(option.value)
-                })
+        if (filter.options.size > 60) {
+            if (expanded) AlertDialog(
+                onDismissRequest = { expanded = false },
+                title = { Text("选择${filter.label}") },
+                text = {
+                    Column {
+                        OutlinedTextField(
+                            value = keyword,
+                            onValueChange = { keyword = it },
+                            label = { Text("搜索专业") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        val visible = remember(keyword, filter.options) {
+                            filter.options.filter { it.label.contains(keyword.trim(), ignoreCase = true) }
+                        }
+                        LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                            itemsIndexed(visible) { _, option ->
+                                DropdownMenuItem(text = { Text(option.label) }, onClick = {
+                                    expanded = false
+                                    onSelect(option.value)
+                                })
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { expanded = false }) { Text("取消") } },
+            )
+        } else {
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                filter.options.forEach { option ->
+                    DropdownMenuItem(text = { Text(option.label) }, onClick = {
+                        expanded = false
+                        onSelect(option.value)
+                    })
+                }
             }
         }
     }
