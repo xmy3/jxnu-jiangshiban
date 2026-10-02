@@ -15,6 +15,19 @@ internal data class PlanCourseGroup(
     val courses: List<PlanCourseRow>,
 )
 
+internal val PlanCourseRow.semesterLabel: String
+    get() = semester?.trim()?.takeIf { it.isNotEmpty() } ?: "未注明学期"
+
+internal fun List<PlanCourseGroup>.semesterOptions(): List<String> =
+    flatMap { it.courses }.map { it.semesterLabel }.distinct()
+        .sortedWith(compareBy<String> { Regex("\\d+").find(it)?.value?.toIntOrNull() ?: Int.MAX_VALUE }.thenBy { it })
+
+/** 保留原模块位置，筛选前后沿用同一模块的展开状态与列表 key。 */
+internal fun List<PlanCourseGroup>.forSemester(semester: String?): List<PlanCourseGroup> =
+    if (semester == null) this else map { group ->
+        group.copy(courses = group.courses.filter { it.semesterLabel == semester })
+    }
+
 /** 只提取手机阅读培养方案需要的信息，不把教务系统的 11 列原样堆在课程卡上。 */
 internal fun List<TrainingPlanSearchPage.Table>.toPlanCourseGroups(): List<PlanCourseGroup> =
     mapIndexedNotNull { index, table ->
