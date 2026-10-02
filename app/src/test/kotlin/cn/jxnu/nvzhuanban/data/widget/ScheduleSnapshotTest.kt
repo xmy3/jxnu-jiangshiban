@@ -48,6 +48,73 @@ class ScheduleSnapshotTest {
     }
 
     @Test
+    fun nationalDaySuppressesCoursesAcrossTwoWeeksWithoutChangingWeekNumbers() {
+        val snapshot = autumnSnapshot((1..7).map { weekday ->
+            course("周$weekday", weekday, (1..18).toList())
+        })
+
+        for (day in 1..7) assertTrue(snapshot.coursesOn(LocalDate.of(2026, 10, day)).isEmpty())
+        assertEquals(5, snapshot.weekAt(LocalDate.of(2026, 10, 2)))
+        assertEquals(6, snapshot.weekAt(LocalDate.of(2026, 10, 7)))
+        assertEquals(listOf("周4"), snapshot.coursesOn(LocalDate.of(2026, 10, 8)).map { it.name })
+    }
+
+    @Test
+    fun nationalDayMakeupReplacesSaturdayWithCurrentWeekFridayCourses() {
+        val snapshot = autumnSnapshot(listOf(
+            course("第五周周五", weekday = 5, weeks = listOf(5)),
+            course("第六周周五", weekday = 5, weeks = listOf(6)),
+            course("第六周周六", weekday = 6, weeks = listOf(6)),
+        ))
+        val makeupDay = LocalDate.of(2026, 10, 10)
+
+        assertEquals(6, snapshot.weekAt(makeupDay))
+        assertEquals(listOf("第六周周五"), snapshot.coursesOn(makeupDay).map { it.name })
+        // 查询不修改快照，离线课表仍可还原周六原有课程。
+        assertEquals(listOf(5, 5, 6), snapshot.toCourses().map { it.weekday })
+    }
+
+    @Test
+    fun makeupCanUseHolidaySourceAcrossCalendarYears() {
+        val snapshot = autumnSnapshot(listOf(
+            course("周三原课", weekday = 3, weeks = listOf(18)),
+            course("周五调课", weekday = 5, weeks = listOf(18)),
+        ))
+
+        assertEquals(listOf("周五调课"), snapshot.coursesOn(LocalDate.of(2026, 12, 30)).map { it.name })
+        assertTrue(snapshot.coursesOn(LocalDate.of(2027, 1, 1)).isEmpty())
+    }
+
+    @Test
+    fun existingSnapshotJsonAppliesCalendarWithoutNewFieldsOrRewrite() {
+        val snapshot = ScheduleSnapshot.fromJson("""
+            {
+                "semester": "2026-2027-1",
+                "totalWeeks": 18,
+                "semesterStartEpochDay": ${LocalDate.of(2026, 9, 1).toEpochDay()},
+                "savedWeek": 1,
+                "updatedAt": 1,
+                "courses": [
+                    {"name": "周五课", "weekday": 5, "start": 1, "end": 2, "weeks": [5, 6]}
+                ]
+            }
+        """.trimIndent())
+
+        assertTrue(snapshot.coursesOn(LocalDate.of(2026, 10, 2)).isEmpty())
+        assertEquals(listOf("周五课"), snapshot.coursesOn(LocalDate.of(2026, 10, 10)).map { it.name })
+        assertEquals(listOf(5, 6), snapshot.toCourses().single().weeks)
+    }
+
+    @Test
+    fun snapshotWithoutSemesterStartDoesNotGuessHolidayRules() {
+        val snapshot = ScheduleSnapshot.fromJson("""
+            {"semester":"legacy","week":5,"weekday":5,"courses":[{"name":"旧课程","start":1,"end":2}]}
+        """.trimIndent())
+
+        assertEquals(listOf("旧课程"), snapshot.coursesOn(LocalDate.of(2026, 10, 2)).map { it.name })
+    }
+
+    @Test
     fun toCoursesRestoresFieldsForOfflineDisplay() {
         val snapshot = ScheduleSnapshot(
             semester = "2025-2026-2",
@@ -161,6 +228,15 @@ class ScheduleSnapshotTest {
         assertEquals((1..18).filter { it != 3 && it != 4 }, restored.weeks)
         assertTrue(restored.isEveningStudy)
     }
+
+    private fun autumnSnapshot(courses: List<SnapshotCourse>) = ScheduleSnapshot(
+        semester = "2026-2027-1",
+        totalWeeks = 18,
+        semesterStartEpochDay = LocalDate.of(2026, 9, 1).toEpochDay(),
+        savedWeek = 1,
+        allCourses = courses,
+        updatedAt = 1L,
+    )
 
     private fun course(name: String, weekday: Int, weeks: List<Int>) = SnapshotCourse(
         name = name,

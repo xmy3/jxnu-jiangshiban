@@ -48,6 +48,7 @@ internal fun CourseDetailSheet(
     weekTotal: Int,
     onEditWeeks: () -> Unit,
     canEditWeeks: Boolean = true,
+    calendarNote: String? = null,
     onQueryTeacher: (String) -> Unit = {},
     onQueryClassroom: (String) -> Unit = {},
 ) {
@@ -110,6 +111,9 @@ internal fun CourseDetailSheet(
             label = "周次",
             value = formatWeeks(course.weeks, weekTotal),
         )
+        calendarNote?.let {
+            DetailRow(icon = Icons.Outlined.CalendarMonth, label = "校历调课", value = it)
+        }
         // 学分由 ScheduleRepository.enrichWithCredits 异步从成绩页补上；
         // 首次进 App 还没补全 / 历史从未修过这门课时 credit 仍为 0，此时不显示该标签
         if (course.credit > 0f) {

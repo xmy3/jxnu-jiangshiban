@@ -67,7 +67,7 @@ Get-FileHash .\app\build\outputs\apk\release\app-release.apk -Algorithm SHA256
 ## Manual smoke test
 
 - Fresh login and logout.
-- Profile > 隐私说明 opens and matches `docs/privacy.md`.
+- Profile > 关于 > 查看完整隐私说明 opens and matches `docs/privacy.md`.
 - Auto-login after app restart.
 - Schedule load, semester switch, and refresh.
 - Grades and test-grade pages.

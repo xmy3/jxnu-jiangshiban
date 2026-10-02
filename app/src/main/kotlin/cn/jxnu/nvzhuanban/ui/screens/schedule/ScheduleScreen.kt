@@ -57,6 +57,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cn.jxnu.nvzhuanban.R
+import cn.jxnu.nvzhuanban.data.model.AcademicCalendar
+import cn.jxnu.nvzhuanban.data.model.CalendarAdjustment
 import cn.jxnu.nvzhuanban.data.model.Course
 import cn.jxnu.nvzhuanban.data.model.EveningStudy
 import cn.jxnu.nvzhuanban.data.model.SemesterPhase
@@ -81,14 +83,51 @@ internal val WEEKDAY_LABELS = listOf("一", "二", "三", "四", "五", "六", "
  * - 周六有课 → 什么都不收——**周日绝不单独收起**（即使周日整学期无课）。
  * 收起的列直接从表头和网格中移除，剩余列 weight 平分变宽。
  * 判断依据是**全学期**课表（非当前周），避免逐周切换时列宽反复跳动。
+ * [requiredDays] 为当前周有校历安排的列，这些列必须展开。
  * 空课表（加载中/无数据）返回空集，不收起。
  */
-internal fun computeFoldedDays(courses: List<Course>): Set<Int> {
+internal fun computeFoldedDays(courses: List<Course>, requiredDays: Set<Int> = emptySet()): Set<Int> {
     if (courses.isEmpty()) return emptySet()
-    val satEmpty = courses.none { it.weekday == 6 }
+    val satEmpty = 6 !in requiredDays && courses.none { it.weekday == 6 }
     if (!satEmpty) return emptySet()
-    val sunEmpty = courses.none { it.weekday == 7 }
+    val sunEmpty = 7 !in requiredDays && courses.none { it.weekday == 7 }
     return if (sunEmpty) setOf(6, 7) else setOf(6)
+}
+
+/** 合并连续的放假日期，避免国庆一周占用七行课表空间。 */
+internal fun calendarWeekSummary(adjustments: List<CalendarAdjustment>): String {
+    val groups = mutableListOf<MutableList<CalendarAdjustment>>()
+    adjustments.sortedBy { it.date }.forEach { adjustment ->
+        val last = groups.lastOrNull()?.last()
+        if (last != null && last.sourceDate == null && adjustment.sourceDate == null &&
+            last.name == adjustment.name && last.date.plusDays(1) == adjustment.date
+        ) {
+            groups.last().add(adjustment)
+        } else {
+            groups.add(mutableListOf(adjustment))
+        }
+    }
+    fun LocalDate.label() = "$monthValue/$dayOfMonth"
+    return groups.joinToString("；") { group ->
+        val first = group.first()
+        val dates = if (group.size == 1) first.date.label()
+            else "${first.date.label()}–${group.last().date.label()}"
+        "$dates ${first.description}"
+    }
+}
+
+@Composable
+private fun CalendarAdjustmentBanner(adjustments: List<CalendarAdjustment>) {
+    if (adjustments.isEmpty()) return
+    Text(
+        text = "校历 · ${calendarWeekSummary(adjustments)}",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onTertiaryContainer,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.tertiaryContainer)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    )
 }
 
 /**
@@ -261,16 +300,22 @@ fun ScheduleScreen(
             state.vacation?.let { info ->
                 VacationBanner(info, today) { value -> viewModel.selectSemester(value) }
             }
-            // 整学期无课的末尾周末列折叠成窄占位，把横向空间让给工作日（列变宽→课程/教室字号更大）。
-            // 取自 state.data 的全量课表，不随选中周变化，列宽跨周稳定。
-            val foldedDays = remember(state.data) {
-                (state.data as? UiState.Success)?.let { computeFoldedDays(it.data) } ?: emptySet()
+            val adjustments = remember(state.semesterStart, state.selectedWeek) {
+                AcademicCalendar.adjustmentsForWeek(state.semesterStart, state.selectedWeek)
+            }
+            CalendarAdjustmentBanner(adjustments)
+            // 普通周沿用整学期折叠规则；有校历安排的周末必须展开，不能把补课隐藏掉。
+            val foldedDays = remember(state.data, adjustments) {
+                (state.data as? UiState.Success)?.let {
+                    computeFoldedDays(it.data, adjustments.map { day -> day.date.dayOfWeek.value }.toSet())
+                } ?: emptySet()
             }
             WeekdayHeader(
                 todayWeekday = todayWeekday,
                 semesterStart = state.semesterStart,
                 selectedWeek = state.selectedWeek,
                 foldedDays = foldedDays,
+                adjustments = adjustments,
             )
             if (state.isOffline) OfflineBanner()
             StateScaffold(
@@ -282,12 +327,9 @@ fun ScheduleScreen(
                     isRefreshing = isRefreshing,
                     onRefresh = viewModel::refresh,
                 ) {
-                    // 课程的 weeks 字段：教务网原始数据都是 1..18，用户改过的课用 CourseOverridesStore
-                    // 的覆盖（仓库层已经替换好了）。这里按选中的周次筛掉不上的课。
-                    // remember 缓存：courses 大小常态 20-40，但切周次按钮、拖动手势都会触发上游重组，
-                    // 不缓存的话每次都要走一遍 List.filter，下游 ScheduleGrid 还会再 groupBy 一次。
-                    val visibleCourses = remember(courses, state.selectedWeek) {
-                        courses.filter { it.isInWeek(state.selectedWeek) }
+                    // 对原课表作日期投影：停课日清空、补课按校历取课，原始周次仍供编辑和快照使用。
+                    val visibleCourses = remember(courses, state.semesterStart, state.selectedWeek) {
+                        AcademicCalendar.coursesForWeek(courses, state.semesterStart, state.selectedWeek)
                     }
                     val onSwipeLeft = {
                         if (state.selectedWeek < state.totalWeeks) {
@@ -315,11 +357,13 @@ fun ScheduleScreen(
                         // 兜底分支：已设置但所选天整学期全被正课占满（synthesize 零卡）时也显示，
                         // 否则改/清设置的入口会随卡片一起消失（设置死角）。
                         // eveningStudyDays 离线态恒 null，占位卡与编辑入口自然隐藏。
-                        val eveningPlaceholderDay = remember(state.eveningStudyDays, courses, visibleCourses, foldedDays) {
+                        val eveningPlaceholderDay = remember(state.eveningStudyDays, courses, visibleCourses, foldedDays, adjustments) {
                             val days = state.eveningStudyDays
                             val showPlaceholder = days != null &&
                                 (days.isEmpty() || courses.none { it.isEveningStudy })
-                            if (showPlaceholder) EveningStudy.placeholderDay(visibleCourses, foldedDays) else null
+                            val holidays = adjustments.filter { it.sourceDate == null }
+                                .map { it.date.dayOfWeek.value }.toSet()
+                            if (showPlaceholder) EveningStudy.placeholderDay(visibleCourses, foldedDays + holidays) else null
                         }
                         ScheduleGrid(
                             courses = visibleCourses,
@@ -353,7 +397,14 @@ fun ScheduleScreen(
             CourseDetailSheet(
                 course = selectedCourse!!,
                 weekTotal = state.totalWeeks,
-                onEditWeeks = { editingWeeksFor = selectedCourse },
+                calendarNote = AcademicCalendar.adjustmentsForWeek(state.semesterStart, state.selectedWeek)
+                    .firstOrNull { it.date.dayOfWeek.value == selectedCourse!!.weekday && it.sourceDate != null }
+                    ?.description,
+                onEditWeeks = {
+                    val original = (state.data as? UiState.Success)?.data
+                        ?.firstOrNull { it.id == selectedCourse!!.id }
+                    editingWeeksFor = original ?: selectedCourse
+                },
                 canEditWeeks = canEditCourseWeeks(state),
                 // 点教师 / 教室 → 关详情 sheet 再跳开课查询自动查。先清 selectedCourse 收起 sheet，
                 // 避免返回时 sheet 还盖在开课查询页上。学期传当前查看学期的开学日（ISO，
@@ -581,6 +632,7 @@ private fun WeekdayHeader(
     semesterStart: LocalDate?,
     selectedWeek: Int,
     foldedDays: Set<Int>,
+    adjustments: List<CalendarAdjustment> = emptyList(),
 ) {
     // 当前 week 的周一 = 第 1 周的周一（SemesterPhase.weekOneMonday，开学名义日对齐最近周一）
     // 加 (week-1)*7 天。必须与 SemesterPhase.at 的周坐标同源，「今」列高亮那格的日期才恰好是今天
@@ -621,6 +673,18 @@ private fun WeekdayHeader(
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                         color = if (isToday) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (adjustments.isNotEmpty()) {
+                    val adjustment = adjustments.firstOrNull { it.date == date }
+                    Text(
+                        text = when {
+                            adjustment == null -> ""
+                            adjustment.sourceDate == null -> "休"
+                            else -> adjustment.shortLabel
+                        },
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = MaterialTheme.colorScheme.tertiary,
                     )
                 }
             }

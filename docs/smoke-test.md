@@ -24,7 +24,7 @@ If connected tests are skipped because no device is available, record that in th
 2. Launch the app.
 3. Confirm it shows either the login page or the main tab shell without crashing.
 4. Confirm the displayed version in Profile > About matches `versionName`.
-5. Open Profile > 隐私说明 and confirm it describes local storage, encrypted credentials, avatar behavior, and cleanup.
+5. Open Profile > 关于 > 查看完整隐私说明 and confirm it describes local storage, encrypted credentials, and avatar behavior.
 
 ## Auth
 

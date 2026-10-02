@@ -1,6 +1,7 @@
 package cn.jxnu.nvzhuanban.data.widget
 
 import android.content.Context
+import cn.jxnu.nvzhuanban.data.model.AcademicCalendar
 import cn.jxnu.nvzhuanban.data.model.Course
 import cn.jxnu.nvzhuanban.data.model.CourseType
 import cn.jxnu.nvzhuanban.data.model.SemesterPhase
@@ -60,14 +61,17 @@ data class ScheduleSnapshot(
     /**
      * 当天应上的课，按节次升序。
      *
+     * - 校历停课日返回空；补课按源教学日的星期和周次筛选，快照本身仍保留原始课表；
      * - 已知教学周（week > 0）且这一周在课程的 [SnapshotCourse.weeks] 内才返回；
      * - 未知教学周（week == 0，旧 snapshot 没有学期起始日）→ 不按周次过滤，避免空数据；
      * - 已确认不在学期内（learns weekAt 显式回 0 + totalWeeks 已知）的情况由 [weekAt] 自己处理，
      *   但区分不出"旧 snapshot 缺信息"和"刚好放假"，所以这里再用 [hasSemesterStart] 做一次显式判定。
      */
     fun coursesOn(date: LocalDate = LocalDate.now()): List<SnapshotCourse> {
-        val weekday = date.dayOfWeek.value
-        val week = weekAt(date)
+        val semesterStart = if (hasSemesterStart) LocalDate.ofEpochDay(semesterStartEpochDay) else null
+        val teachingDate = AcademicCalendar.teachingDate(semesterStart, date) ?: return emptyList()
+        val weekday = teachingDate.dayOfWeek.value
+        val week = weekAt(teachingDate)
         val inSemester = !hasSemesterStart || week > 0
         if (!inSemester) return emptyList()
         return allCourses.asSequence()

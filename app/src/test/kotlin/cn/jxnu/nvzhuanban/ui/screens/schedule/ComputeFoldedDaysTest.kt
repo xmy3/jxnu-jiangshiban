@@ -1,8 +1,10 @@
 package cn.jxnu.nvzhuanban.ui.screens.schedule
 
 import cn.jxnu.nvzhuanban.data.model.Course
+import cn.jxnu.nvzhuanban.data.model.AcademicCalendar
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.time.LocalDate
 
 /**
  * 周末列收起规则：周六整学期无课就收起周六；周日仅在周六也收起时跟着一起收，
@@ -49,6 +51,30 @@ class ComputeFoldedDaysTest {
     @Test
     fun `空课表不收起`() {
         assertEquals(emptySet<Int>(), computeFoldedDays(emptyList()))
+    }
+
+    @Test
+    fun `国庆补课周展开周六且普通周恢复原折叠`() {
+        val courses = (1..5).map(::course)
+        val start = LocalDate.of(2026, 9, 1)
+        val makeupDays = AcademicCalendar.adjustmentsForWeek(start, 6)
+            .map { it.date.dayOfWeek.value }.toSet()
+        assertEquals(emptySet<Int>(), computeFoldedDays(courses, makeupDays))
+        val normalDays = AcademicCalendar.adjustmentsForWeek(start, 7)
+            .map { it.date.dayOfWeek.value }.toSet()
+        assertEquals(setOf(6, 7), computeFoldedDays(courses, normalDays))
+    }
+
+    @Test
+    fun `整周假期合并连续日期且补课提示不猜源日期`() {
+        val start = LocalDate.of(2026, 9, 1)
+        val holidays = calendarWeekSummary(AcademicCalendar.adjustmentsForWeek(start, 5))
+        assertEquals("10/1–10/4 国庆放假", holidays)
+        val makeupWeek = calendarWeekSummary(AcademicCalendar.adjustmentsForWeek(start, 6))
+        org.junit.Assert.assertTrue(makeupWeek.contains("10/5–10/7 国庆放假"))
+        org.junit.Assert.assertTrue(makeupWeek.contains("10/10"))
+        org.junit.Assert.assertTrue(makeupWeek.contains("补周五"))
+        org.junit.Assert.assertFalse(makeupWeek.contains("10/2"))
     }
 
     @Test

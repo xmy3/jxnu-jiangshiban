@@ -29,6 +29,8 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import cn.jxnu.nvzhuanban.MainActivity
+import cn.jxnu.nvzhuanban.data.model.AcademicCalendar
+import cn.jxnu.nvzhuanban.data.model.CalendarAdjustment
 import cn.jxnu.nvzhuanban.data.model.SectionTimetable
 import cn.jxnu.nvzhuanban.data.model.SemesterPhase
 import cn.jxnu.nvzhuanban.data.widget.ScheduleSnapshot
@@ -126,9 +128,23 @@ class TodayScheduleWidget : GlanceAppWidget() {
                     is SemesterPhase.NotStarted ->
                         VacationContent(today, phase.weekOneMonday)
                     else -> Column(modifier = GlanceModifier.fillMaxSize()) {
+                        val semesterStart = if (snapshot.hasSemesterStart) {
+                            LocalDate.ofEpochDay(snapshot.semesterStartEpochDay)
+                        } else null
+                        val adjustment = AcademicCalendar.adjustmentOn(semesterStart, today)
                         Header(week, weekday, today)
                         Spacer(GlanceModifier.height(8.dp))
-                        Body(courses, nowMins)
+                        if (adjustment?.sourceDate != null) {
+                            Text(
+                                text = widgetCalendarLabel(adjustment),
+                                style = TextStyle(
+                                    color = GlanceTheme.colors.primary,
+                                    fontSize = 11.sp,
+                                ),
+                            )
+                            Spacer(GlanceModifier.height(4.dp))
+                        }
+                        Body(courses, nowMins, adjustment)
                     }
                 }
             }
@@ -197,14 +213,18 @@ class TodayScheduleWidget : GlanceAppWidget() {
     }
 
     @Composable
-    private fun Body(courses: List<SnapshotCourse>, nowMins: Int) {
+    private fun Body(courses: List<SnapshotCourse>, nowMins: Int, adjustment: CalendarAdjustment?) {
         if (courses.isEmpty()) {
             Box(
                 modifier = GlanceModifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "今天没课，开心去玩 🎉",
+                    text = when {
+                        adjustment == null -> "今天没课，开心去玩 🎉"
+                        adjustment.sourceDate == null -> widgetCalendarLabel(adjustment)
+                        else -> "今天没有安排课程"
+                    },
                     style = TextStyle(
                         color = GlanceTheme.colors.onSurface,
                         fontSize = 13.sp,
@@ -462,3 +482,9 @@ internal fun vacationTitle(month: Int): String = when (month) {
     6, 7, 8, 9 -> "暑假中 ⛱️"
     else -> "假期中"
 }
+
+/** 校历只明确了补课星期时，不在提示里推断原上课日期。 */
+internal fun widgetCalendarLabel(adjustment: CalendarAdjustment): String =
+    adjustment.sourceDate?.let {
+        "${adjustment.name}，补周${"一二三四五六日"[it.dayOfWeek.value - 1]}的课"
+    } ?: "${adjustment.name}放假，今日停课"
