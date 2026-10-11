@@ -38,3 +38,7 @@ keystore.properties
 # IDE 本机状态：部署目标选择、VCS 映射随开发机漂移，不入库
 /.idea/deploymentTargetSelector.xml
 /.idea/vcs.xml
+
+# Local agent guidance: keep on this machine (all filename case variants)
+[Cc][Ll][Aa][Uu][Dd][Ee].[Mm][Dd]
+[Aa][Gg][Ee][Nn][Tt][Ss].[Mm][Dd]
