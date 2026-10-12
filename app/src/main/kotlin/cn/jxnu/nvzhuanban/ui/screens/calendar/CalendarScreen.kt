@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -64,6 +67,7 @@ import cn.jxnu.nvzhuanban.ui.components.EmptyState
 import cn.jxnu.nvzhuanban.ui.components.FullScreenImageViewer
 import cn.jxnu.nvzhuanban.ui.components.RefreshIconButton
 import cn.jxnu.nvzhuanban.ui.components.StateScaffold
+import cn.jxnu.nvzhuanban.ui.components.UiState
 import cn.jxnu.nvzhuanban.ui.components.rememberTransientErrorSnackbar
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -76,6 +80,8 @@ fun CalendarScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val today = rememberCalendarDate()
+    val perpetualEntry = (state as? UiState.Success)?.data?.firstOrNull { it.isPerpetual }
     // 非空时全屏展示该 JPG 条目（早年校历是图片文件，app 内直接看，不外跳）
     var imageEntry by remember { mutableStateOf<CalendarEntry?>(null) }
 
@@ -86,6 +92,19 @@ fun CalendarScreen(
                 title = { Text(stringResource(R.string.calendar_title)) },
                 navigationIcon = { BackNavigationIcon(onBack) },
                 actions = {
+                    TextButton(
+                        onClick = {
+                            perpetualEntry?.let { entry ->
+                                openCalendarUrlExternally(context, entry.url, entry.title)
+                            }
+                        },
+                        enabled = perpetualEntry != null,
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) {
+                        Text(stringResource(R.string.calendar_perpetual))
+                    }
+                    // 两个按钮的触控区域之间留出间隔，避免打开万年历时误触刷新。
+                    Spacer(Modifier.width(20.dp))
                     RefreshIconButton(isRefreshing = isRefreshing, onClick = viewModel::refresh)
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -102,7 +121,9 @@ fun CalendarScreen(
                 onRetry = viewModel::load,
                 loading = { m -> cn.jxnu.nvzhuanban.ui.components.ListSkeleton(modifier = m) },
             ) { entries ->
-                if (entries.isEmpty()) {
+                val semesterEntries = entries.filterNot { it.isPerpetual }
+                val highlight = remember(entries, today) { highlightedCalendar(entries, today) }
+                if (semesterEntries.isEmpty()) {
                     EmptyState(stringResource(R.string.calendar_empty))
                 } else {
                     LazyColumn(
@@ -110,16 +131,20 @@ fun CalendarScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        items(entries, key = { it.url }) { entry ->
-                            CalendarRow(entry = entry, onClick = {
-                                // 尽量留在 app 内：PDF 走原生渲染查看页，JPG 走全屏图片查看器；
-                                // DOC/XLS/HTM 等无法原生渲染的早年格式仍外跳系统应用兜底。
-                                when (entry.fileType) {
-                                    CalendarFileType.PDF -> onOpenDocument(entry)
-                                    CalendarFileType.JPG -> imageEntry = entry
-                                    else -> openCalendarUrlExternally(context, entry.url, entry.title)
-                                }
-                            })
+                        items(semesterEntries, key = { it.url }) { entry ->
+                            CalendarRow(
+                                entry = entry,
+                                highlight = highlight?.takeIf { it.entry === entry },
+                                onClick = {
+                                    // 尽量留在 app 内：PDF 走原生渲染查看页，JPG 走全屏图片查看器；
+                                    // DOC/XLS/HTM 等无法原生渲染的早年格式仍外跳系统应用兜底。
+                                    when (entry.fileType) {
+                                        CalendarFileType.PDF -> onOpenDocument(entry)
+                                        CalendarFileType.JPG -> imageEntry = entry
+                                        else -> openCalendarUrlExternally(context, entry.url, entry.title)
+                                    }
+                                },
+                            )
                         }
                     }
                 }
@@ -172,44 +197,69 @@ internal fun openCalendarUrlExternally(context: Context, url: String, title: Str
 }
 
 @Composable
-private fun CalendarRow(entry: CalendarEntry, onClick: () -> Unit) {
+private fun CalendarRow(entry: CalendarEntry, highlight: CalendarHighlight?, onClick: () -> Unit) {
+    val isHighlighted = highlight != null
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceContainerLow,
         ),
+        border = if (isHighlighted) BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+            else null,
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .heightIn(min = if (isHighlighted) 120.dp else 0.dp)
+                .padding(
+                    horizontal = if (isHighlighted) 20.dp else 16.dp,
+                    vertical = if (isHighlighted) 22.dp else 14.dp,
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer),
+                    .size(if (isHighlighted) 56.dp else 40.dp)
+                    .clip(RoundedCornerShape(if (isHighlighted) 16.dp else 12.dp))
+                    .background(
+                        if (isHighlighted) MaterialTheme.colorScheme.surface
+                        else MaterialTheme.colorScheme.primaryContainer,
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = entry.fileType.icon(),
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier.size(if (isHighlighted) 28.dp else 22.dp),
                 )
             }
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
+                if (highlight != null) {
+                    Text(
+                        text = stringResource(
+                            if (highlight.upcoming) R.string.calendar_next_semester
+                            else R.string.calendar_current_semester,
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = entry.title,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
+                        style = if (isHighlighted) MaterialTheme.typography.titleLarge
+                            else MaterialTheme.typography.bodyLarge,
+                        fontWeight = if (isHighlighted) FontWeight.SemiBold else FontWeight.Medium,
+                        color = if (isHighlighted) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f, fill = false),
                     )
                     if (entry.isCorrection) {
@@ -223,14 +273,16 @@ private fun CalendarRow(entry: CalendarEntry, onClick: () -> Unit) {
                     Text(
                         text = entry.fileType.label(),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (isHighlighted) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
             Icon(
                 imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (isHighlighted) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(22.dp),
             )
         }

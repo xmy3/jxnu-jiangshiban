@@ -24,6 +24,8 @@ data class Grade(
     val makeupScore: String? = null,
     /** 备注（教务系统返回为空时为 null） */
     val remark: String? = null,
+    /** 赴外交流学习的学校；null 表示校内课程，空字符串表示交流课程未提供学校名。 */
+    val exchangeSchool: String? = null,
 ) {
     /** 折算分（用于 GPA 计算时的"分数*学分"） */
     val weightedGpa: Float? get() = gpa?.let { it * credit }

@@ -36,7 +36,7 @@ import cn.jxnu.nvzhuanban.ui.theme.AppShape
  * 措辞纪律：教务口径叫「标准分」，全程不得出现「GPA/绩点」。
  *
  * 传入的 [semesters] 沿用成绩页顺序（最新学期在前），内部反转为时间正序（左旧右新）。
- * 少于 2 个学期不构成趋势，调用方应先判断再决定是否渲染。
+ * 没有标准分的学期不参与趋势；少于 2 个有标准分的学期时不渲染。
  */
 @Composable
 internal fun SemesterTrendCard(
@@ -45,7 +45,9 @@ internal fun SemesterTrendCard(
 ) {
     // 时间正序：成绩页最新在前，折线要左旧右新
     val points = remember(semesters) {
-        semesters.asReversed().map { TrendPoint(abbreviateSemester(it.semester), it.gpa) }
+        semesters.asReversed()
+            .filter { sem -> sem.grades.any { it.gpa != null } }
+            .map { TrendPoint(abbreviateSemester(it.semester), it.gpa) }
     }
     if (points.size < 2) return
 

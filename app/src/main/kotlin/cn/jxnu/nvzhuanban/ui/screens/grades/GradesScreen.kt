@@ -160,7 +160,7 @@ private fun SemesterGradesContent(viewModel: GradesViewModel) {
 }
 
 @Composable
-private fun GradesList(
+internal fun GradesList(
     semesters: List<SemesterSummary>,
     graduationMinimumCredits: Float?,
 ) {
@@ -171,10 +171,13 @@ private fun GradesList(
         val totalCredit = allGrades.sumOf { it.credit.toDouble() }.toFloat()
         val totalWeighted = allGrades.mapNotNull { it.weightedGpa }.sum()
         val gpaCredit = allGrades.filter { it.gpa != null }.sumOf { it.credit.toDouble() }.toFloat()
-        val cumGpa = if (gpaCredit > 0) totalWeighted / gpaCredit else 0f
+        val cumGpa = if (gpaCredit > 0) totalWeighted / gpaCredit else null
         Triple(totalCredit, cumGpa, allGrades.size)
     }
     val (totalCredit, cumGpa, courseCount) = aggregates
+    val hasTrend = remember(semesters) {
+        semesters.count { sem -> sem.grades.any { it.gpa != null } } >= 2
+    }
 
     // 数字进场动画的 started 标志必须放在 LazyColumn 外：header item 无 key 且列表很长，
     // 滚出视口后 item 被销毁、item 内的 remember 会丢，滚回顶部就会重播一遍 0 起动画。
@@ -196,8 +199,8 @@ private fun GradesList(
                 started = statsStarted,
             )
         }
-        // 至少两个学期才构成趋势；单学期时不渲染（组件内部也会再判一次）
-        if (semesters.size >= 2) {
+        // 至少两个有标准分的学期才构成趋势（组件内部也会再判一次）
+        if (hasTrend) {
             item(key = "trend", contentType = "trend") {
                 SemesterTrendCard(semesters = semesters)
             }
@@ -214,7 +217,7 @@ private fun GradesList(
 
 @Composable
 private fun GpaHeaderCard(
-    gpa: Float,
+    gpa: Float?,
     totalCredit: Float,
     graduationMinimumCredits: Float?,
     courseCount: Int,
@@ -225,7 +228,7 @@ private fun GpaHeaderCard(
     // 之后 refresh 带来的数值变化也会平滑过渡。
     val numberSpec = tween<Float>(durationMillis = 700)
     val animatedGpa by animateFloatAsState(
-        targetValue = if (started) gpa else 0f, animationSpec = numberSpec, label = "gpa",
+        targetValue = if (started) gpa ?: 0f else 0f, animationSpec = numberSpec, label = "gpa",
     )
     val animatedCredit by animateFloatAsState(
         targetValue = if (started) totalCredit else 0f, animationSpec = numberSpec, label = "credit",
@@ -259,7 +262,7 @@ private fun GpaHeaderCard(
             ) {
                 StatCol(
                     label = stringResource(R.string.grades_gpa_label),
-                    value = "%.2f".format(animatedGpa),
+                    value = if (gpa != null) "%.2f".format(animatedGpa) else "—",
                     modifier = Modifier.weight(1f),
                 )
                 VerticalDivider()
@@ -337,14 +340,16 @@ private fun SemesterHeader(sem: SemesterSummary) {
             fontWeight = FontWeight.SemiBold,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            AssistChip(
-                onClick = {},
-                label = { Text("加权平均标准分 %.2f".format(sem.gpa)) },
-                colors = AssistChipDefaults.assistChipColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-            )
+            if (sem.grades.any { it.gpa != null }) {
+                AssistChip(
+                    onClick = {},
+                    label = { Text("加权平均标准分 %.2f".format(sem.gpa)) },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                )
+            }
             AssistChip(
                 onClick = {},
                 label = { Text("${sem.totalCredit.formatCredit()} 学分") },
@@ -377,6 +382,14 @@ private fun GradeRow(grade: Grade, modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
+                grade.exchangeSchool?.let { school ->
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = if (school.isBlank()) "赴外交流学习" else "赴外交流学习 · $school",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 grade.remark?.takeIf { it.isNotBlank() }?.let { remark ->
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(

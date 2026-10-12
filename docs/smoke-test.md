@@ -44,8 +44,8 @@ If connected tests are skipped because no device is available, record that in th
 
 ## WebView and privacy
 
-1. Open 空闲教室 and confirm only the allowed classroom site loads inside the app.
-2. Open announcement detail and confirm the article renders through the hardened WebView.
+1. Open 我的 → 空闲教室 and confirm the classroom site and its internal links (including new-window links) stay inside the app. Confirm external links do not launch a browser, refresh works, and system Back navigates WebView history before leaving the screen.
+2. Open announcement detail and confirm the article renders through the native reader, including text, tables, and images.
 3. Confirm avatar is not requested while "显示学生头像" is off.
 4. Re-read `docs/privacy.md` if auth, cookie, avatar, WebView, logging, or widget behavior changed.
 

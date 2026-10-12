@@ -9,7 +9,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,24 +27,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.outlined.ListAlt
-import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Brightness4
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.Brightness7
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.ColorLens
 import androidx.compose.material.icons.outlined.Event
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.MeetingRoom
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.School
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material.icons.outlined.Widgets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -55,6 +48,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -98,6 +93,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -117,6 +113,7 @@ import cn.jxnu.nvzhuanban.ui.components.RemoteJwcImage
 import cn.jxnu.nvzhuanban.ui.components.StateScaffold
 import cn.jxnu.nvzhuanban.ui.screens.announcement.openExternalHttpUrl
 import cn.jxnu.nvzhuanban.ui.theme.AppShape
+import cn.jxnu.nvzhuanban.ui.theme.NvzhuanbanTheme
 import cn.jxnu.nvzhuanban.ui.widget.WidgetPinResultReceiver
 import cn.jxnu.nvzhuanban.ui.widget.isPinTodayScheduleWidgetSupported
 import cn.jxnu.nvzhuanban.ui.widget.openShortcutPermissionSettings
@@ -128,6 +125,117 @@ import java.time.LocalDateTime
 
 /** 官网首页即下载页（APK 与 GitHub Release 同包同 SHA）；更新弹窗与关于页共用。 */
 private const val OFFICIAL_WEBSITE_URL = "https://jsb.betterjxnu.cn/"
+
+/** Android Studio / debug Activity 共用的示例预览，不读取或写入登录、主题偏好。 */
+@Preview(name = "3 · 轻量清单", showBackground = true, widthDp = 390, heightDp = 844)
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ProfileLightweightListPreview() {
+    var previewTheme by remember { mutableStateOf(ThemeMode.DARK) }
+    var previewDynamicColor by remember { mutableStateOf(true) }
+    var showThemeDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
+    var previewNotice by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val versionName = remember(context) {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
+            .getOrNull() ?: "预览"
+    }
+    val showSampleNotice = { previewNotice = "当前为示例数据预览，登录后可使用此功能。" }
+
+    NvzhuanbanTheme(themeMode = previewTheme, dynamicColor = previewDynamicColor) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(stringResource(R.string.profile_title)) },
+                    actions = {
+                        Text(
+                            "示例数据",
+                            modifier = Modifier.padding(end = 16.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                )
+            },
+            bottomBar = {
+                NavigationBar {
+                    listOf(
+                        "课表" to Icons.Outlined.CalendarMonth,
+                        "通知" to Icons.Outlined.Notifications,
+                        "我的" to Icons.Outlined.Person,
+                    ).forEach { (title, icon) ->
+                        NavigationBarItem(
+                            selected = title == "我的",
+                            onClick = showSampleNotice,
+                            icon = { Icon(icon, contentDescription = null) },
+                            label = { Text(title) },
+                        )
+                    }
+                }
+            },
+        ) { padding ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                item {
+                    UserCard(
+                        user = UserProfile(
+                            studentId = "2025050001", name = "张同学", grade = 2025,
+                            college = "人工智能学院", major = "计算机科学与技术（师范）",
+                            className = "25级计算机科学与技术（师范）1班",
+                        ),
+                        showAvatar = false, enrichStatus = EnrichStatus.Idle,
+                        onRetryEnrich = {}, onAvatarToggle = {}, onOpenStudentInfo = showSampleNotice,
+                    )
+                }
+                item {
+                    // 复用原摘要组件；示例值不触发成绩、毕业审核或考试网络请求。
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        StatTile("59", "已修学分", Modifier.weight(1f), showSampleNotice)
+                        StatTile("34%", "毕业进度", Modifier.weight(1f), showSampleNotice)
+                        StatTile("—", "暂无待考", Modifier.weight(1f), showSampleNotice)
+                    }
+                }
+                item {
+                    ProfileToolsSection(
+                        onOpenClassroom = showSampleNotice, onOpenPeopleSearch = showSampleNotice,
+                        onOpenCalendar = showSampleNotice, onOpenCourseOffering = showSampleNotice,
+                        onOpenPlanSearch = showSampleNotice,
+                    )
+                }
+                item {
+                    ProfileSettingsSection(
+                        versionName = versionName, latestRelease = null,
+                        onOpenTheme = { showThemeDialog = true }, onAddWidgetClick = showSampleNotice,
+                        onAboutClick = { showAboutDialog = true }, onCheckUpdate = showSampleNotice,
+                        onLogoutClick = showSampleNotice,
+                    )
+                }
+                item { Spacer(Modifier.height(24.dp)) }
+            }
+        }
+        if (showThemeDialog) {
+            ThemeChoiceDialog(
+                current = previewTheme, dynamicColor = previewDynamicColor,
+                onDynamicColorToggle = { previewDynamicColor = it },
+                onSelect = { previewTheme = it; showThemeDialog = false },
+                onDismiss = { showThemeDialog = false },
+            )
+        }
+        if (showAboutDialog) AboutDialog(versionName, onDismiss = { showAboutDialog = false })
+        previewNotice?.let { notice ->
+            AlertDialog(
+                onDismissRequest = { previewNotice = null },
+                title = { Text("界面预览") }, text = { Text(notice) },
+                confirmButton = { TextButton(onClick = { previewNotice = null }) { Text("知道了") } },
+            )
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -233,19 +341,19 @@ fun ProfileScreen(
                     )
                 }
                 item {
-                    ToolsBlock(
+                    ProfileToolsSection(
                         onOpenClassroom = onOpenClassroom,
                         onOpenPeopleSearch = onOpenPeopleSearch,
                         onOpenCalendar = onOpenCalendar,
                         onOpenCourseOffering = onOpenCourseOffering,
                         onOpenPlanSearch = onOpenPlanSearch,
-                        onOpenTheme = { showThemeDialog = true },
                     )
                 }
                 item {
-                    SettingsBlock(
+                    ProfileSettingsSection(
                         versionName = versionName,
                         latestRelease = latestRelease,
+                        onOpenTheme = { showThemeDialog = true },
                         onAddWidgetClick = { showWidgetDialog = true },
                         onAboutClick = { showAboutDialog = true },
                         onCheckUpdate = {
@@ -610,196 +718,6 @@ private fun StatTile(
             )
         }
     }
-}
-
-@Composable
-private fun ToolsBlock(
-    onOpenClassroom: () -> Unit,
-    onOpenPeopleSearch: () -> Unit,
-    onOpenCalendar: () -> Unit,
-    onOpenCourseOffering: () -> Unit,
-    onOpenPlanSearch: () -> Unit,
-    onOpenTheme: () -> Unit,
-) {
-    // 本人培养方案在上方摘要条；这里提供全校培养方案查询。
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = AppShape.card,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        FlowRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp),
-            maxItemsInEachRow = 3,
-        ) {
-            ToolTile(
-                icon = Icons.Outlined.CalendarMonth,
-                title = stringResource(R.string.calendar_title),
-                modifier = Modifier.weight(1f),
-                onClick = onOpenCalendar,
-            )
-            ToolTile(
-                icon = Icons.Outlined.Search,
-                title = stringResource(R.string.people_search_title),
-                modifier = Modifier.weight(1f),
-                onClick = onOpenPeopleSearch,
-            )
-            ToolTile(
-                icon = Icons.AutoMirrored.Outlined.ListAlt,
-                title = stringResource(R.string.course_offering_title),
-                modifier = Modifier.weight(1f),
-                onClick = onOpenCourseOffering,
-            )
-            ToolTile(
-                icon = Icons.Outlined.Search,
-                title = "培养方案查询",
-                modifier = Modifier.weight(1f),
-                onClick = onOpenPlanSearch,
-            )
-            ToolTile(
-                icon = Icons.Outlined.MeetingRoom,
-                title = stringResource(R.string.classroom_title),
-                modifier = Modifier.weight(1f),
-                onClick = onOpenClassroom,
-            )
-            ToolTile(
-                icon = Icons.Outlined.ColorLens,
-                title = stringResource(R.string.profile_theme),
-                modifier = Modifier.weight(1f),
-                onClick = onOpenTheme,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ToolTile(
-    icon: ImageVector,
-    title: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    Column(
-        modifier = modifier
-            .clickable(onClick = onClick)
-            .padding(vertical = 14.dp, horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(28.dp),
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
-}
-
-@Composable
-private fun SettingsBlock(
-    versionName: String,
-    latestRelease: AppRelease?,
-    onAddWidgetClick: () -> Unit,
-    onAboutClick: () -> Unit,
-    onCheckUpdate: () -> Unit,
-    onLogoutClick: () -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = AppShape.card,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Column {
-            SettingsRow(
-                icon = Icons.Outlined.Widgets,
-                title = "添加桌面小组件",
-                subtitle = "把「今日课表」放到手机桌面",
-                onClick = onAddWidgetClick,
-            )
-            SettingsDivider()
-            SettingsRow(
-                icon = Icons.Outlined.Info,
-                title = stringResource(R.string.profile_about),
-                subtitle = "江师办 v$versionName",
-                onClick = onAboutClick,
-            )
-            SettingsDivider()
-            // subtitle 三态切换：有新版本时用 primary 色凸显（仿 BadgedBox 视觉但走纯文案，
-            // 跟 SettingsBlock 的 row-list 视觉密度更搭）；其他情况只显示当前版本。
-            val updateTint = if (latestRelease != null) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurface
-            SettingsRow(
-                icon = Icons.Outlined.SystemUpdate,
-                title = "检查更新",
-                subtitle = if (latestRelease != null) "发现新版本 v${latestRelease.versionName} · 点击查看"
-                else "当前版本 v$versionName",
-                tint = updateTint,
-                onClick = onCheckUpdate,
-            )
-            SettingsDivider()
-            SettingsRow(
-                icon = Icons.AutoMirrored.Outlined.Logout,
-                title = stringResource(R.string.profile_logout),
-                tint = MaterialTheme.colorScheme.error,
-                onClick = onLogoutClick,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SettingsRow(
-    icon: ImageVector,
-    title: String,
-    subtitle: String? = null,
-    tint: Color = MaterialTheme.colorScheme.onSurface,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier.size(22.dp),
-        )
-        Spacer(Modifier.width(14.dp))
-        Column {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = tint,
-            )
-            if (subtitle != null) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingsDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-    )
 }
 
 @Composable

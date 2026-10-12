@@ -295,9 +295,11 @@ class ScheduleRepository(
     suspend fun enrichWithCredits(): Boolean = enrichMutex.withLock {
         if (creditMap != null) return@withLock false
         val result = runCatching { gradeRepo.fetchAll() }.getOrNull() ?: return@withLock false
+        // 只用校内课程补齐课表学分，防止同名交流课覆盖校内课程。
         // 同名课程历史上学分一致；偶发不一致时后面学期覆盖前面（保留最新）
         creditMap = result.semesters
             .flatMap { it.grades }
+            .filter { it.exchangeSchool == null }
             .filter { it.credit > 0f }
             .associate { it.courseName to it.credit }
         true

@@ -26,5 +26,5 @@
 每次改动认证、网络、日志、WebView 或本地存储时，都需要重新确认：
 
 - release 包不会输出账号、密码、cookie、学生头像 URL 或学号。
-- WebView 仍禁用文件访问、content 访问和 mixed content；通知详情页禁用 JavaScript，空闲教室页仅允许加载固定 HTTPS 页面。
+- WebView 仍禁用文件访问、content 访问和 mixed content；空闲教室页仅允许加载固定 HTTPS 教室站点，站内导航在应用内完成，站外链接拦截且不唤起浏览器。
 - 自动登录只在加密存储可用时启用。

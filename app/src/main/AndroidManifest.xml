@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Android 11+ package visibility：校历 PDF / 公告「在浏览器中打开」/ 空闲教室外链
+    <!-- Android 11+ package visibility：校历文档 / 公告「在浏览器中打开」
          都需要系统能 resolve 到处理 http(s) VIEW 的浏览器。queries 里必须显式声明
          BROWSABLE category —— 浏览器（Chrome / 系统浏览器）的 intent-filter 都带
          BROWSABLE，缺这个 category 的 queries 在 visibility 过滤时就会把它们排除掉，

@@ -1,8 +1,6 @@
 package cn.jxnu.nvzhuanban.ui.screens.classroom
 
 import android.annotation.SuppressLint
-import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.view.ViewGroup
@@ -116,6 +114,8 @@ fun ClassroomScreen(onBack: () -> Unit) {
                             javaScriptEnabled = true
                             domStorageEnabled = true
                             javaScriptCanOpenWindowsAutomatically = false
+                            // target="_blank" 的新窗口链接也复用当前 WebView。
+                            setSupportMultipleWindows(false)
                             allowFileAccess = false
                             allowContentAccess = false
                             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
@@ -135,9 +135,8 @@ fun ClassroomScreen(onBack: () -> Unit) {
                             ): Boolean {
                                 val target = request?.url?.toString() ?: return true
                                 if (request.isForMainFrame != true) return false
-                                if (isAllowedClassroomUrl(target)) return false
-                                openExternal(view?.context ?: context, target)
-                                return true
+                                // 教室页面始终在应用内打开；站外链接拦截，不交给外部浏览器。
+                                return !isAllowedClassroomUrl(target)
                             }
 
                             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
@@ -202,13 +201,6 @@ private fun isAllowedClassroomUrl(url: String?): Boolean {
     return uri.scheme == "https" &&
         uri.host == CLASSROOM_HOST &&
         (path == CLASSROOM_PATH || path.startsWith("$CLASSROOM_PATH/"))
-}
-
-private fun openExternal(context: Context, url: String) {
-    val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return
-    if (uri.scheme != "https" && uri.scheme != "http") return
-    val intent = Intent(Intent.ACTION_VIEW, uri)
-    runCatching { context.startActivity(intent) }
 }
 
 @Composable

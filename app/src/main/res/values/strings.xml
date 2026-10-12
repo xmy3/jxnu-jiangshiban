@@ -55,6 +55,9 @@
 
     <!-- 校历（教学周历索引） -->
     <string name="calendar_title">校历</string>
+    <string name="calendar_perpetual">万年历</string>
+    <string name="calendar_current_semester">当前学期</string>
+    <string name="calendar_next_semester">下学期</string>
     <string name="calendar_empty">未解析到校历条目</string>
     <string name="calendar_badge_correction">调整版</string>
     <string name="calendar_open_failed">没有可打开该文件的应用</string>
