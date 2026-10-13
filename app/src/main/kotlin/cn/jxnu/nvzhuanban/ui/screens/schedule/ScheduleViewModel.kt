@@ -368,51 +368,24 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
-     * 跨零点自愈：ScheduleScreen 的零点 ticker 调用。零点前后 [deriveTimeState] 的输入
+     * 页面重入、恢复前台和跨日时校准时间态。日期变化后 [deriveTimeState] 的输入
      * （今天的日期）变了，但它只在数据落点被调用——页面驻留跨过周日→周一时 currentWeek
      * 停在上一周，「今」列高亮与列头日期会整体落在过期的一周网格上。
      * 在线态全部输入来自 repo 内存缓存，无网络请求。
      */
-    fun onDayChanged() {
+    fun onDayChanged(today: LocalDate = LocalDate.now()) {
         val prev = _state.value
         val wasOnCurrentWeek = prev.currentWeek != null && prev.selectedWeek == prev.currentWeek
         if (prev.isOffline) {
             // 离线兜底态 repo 内存缓存是空的（这次拉取失败过），deriveTimeState 会把快照
             // 算出的时间态清成 null（「今」列高亮/假期横幅凭空消失）。改用已还原进 state
             // 的快照开学日重算，与 loadOfflineSnapshot 同源；老快照没存开学日则维持现状。
-            val total = prev.totalWeeks.coerceAtLeast(1)
-            when (val phase = SemesterPhase.at(prev.semesterStart, total, LocalDate.now())) {
-                is SemesterPhase.InProgress -> {
-                    val week = phase.week.coerceIn(1, total)
-                    _state.update {
-                        it.copy(
-                            currentWeek = week,
-                            vacation = null,
-                            selectedWeek = if (wasOnCurrentWeek) week else it.selectedWeek,
-                        )
-                    }
-                }
-                is SemesterPhase.Ended -> _state.update {
-                    // 跨零点恰逢学期结束：保留快照里已有的下学期开学日（若有）继续倒计时
-                    it.copy(
-                        currentWeek = null,
-                        vacation = VacationInfo(
-                            semesterEnded = true,
-                            nextStartDate = it.vacation?.nextStartDate,
-                        ),
-                    )
-                }
-                is SemesterPhase.NotStarted -> _state.update {
-                    it.copy(
-                        currentWeek = null,
-                        vacation = VacationInfo(semesterEnded = false, nextStartDate = phase.weekOneMonday),
-                    )
-                }
-                null -> Unit
-            }
+            val advanced = advanceOfflineScheduleDay(prev, baselineWeek, today)
+            baselineWeek = advanced.baselineWeek
+            _state.value = advanced.state
             return
         }
-        val ts = deriveTimeState()
+        val ts = deriveTimeState(today)
         baselineWeek = ts.baselineWeek
         _state.update {
             it.copy(

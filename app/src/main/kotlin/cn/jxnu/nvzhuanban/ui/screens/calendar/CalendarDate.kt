@@ -11,6 +11,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -23,19 +24,20 @@ import kotlinx.coroutines.delay
 
 /** 跟随设备本地日期：跨午夜、回到前台、手动调时或切换时区都会重新校准。 */
 @Composable
-internal fun rememberCalendarDate(): LocalDate {
+internal fun rememberCalendarDate(todayProvider: () -> LocalDate = LocalDate::now): LocalDate {
     val context = LocalContext.current
-    var today by remember { mutableStateOf(LocalDate.now()) }
+    val currentTodayProvider by rememberUpdatedState(todayProvider)
+    var today by remember { mutableStateOf(todayProvider()) }
     var clockRevision by remember { mutableIntStateOf(0) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        today = LocalDate.now()
+        today = currentTodayProvider()
         clockRevision++
     }
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                today = LocalDate.now()
+                today = currentTodayProvider()
                 // 同一天内改时间也要重排午夜等待，不能只把 today 当作 effect 的 key。
                 clockRevision++
             }
@@ -52,7 +54,7 @@ internal fun rememberCalendarDate(): LocalDate {
         val now = ZonedDateTime.now()
         val midnight = now.toLocalDate().plusDays(1).atStartOfDay(now.zone)
         delay(Duration.between(now, midnight).toMillis().coerceAtLeast(1_000L) + 100L)
-        today = LocalDate.now()
+        today = currentTodayProvider()
     }
     return today
 }

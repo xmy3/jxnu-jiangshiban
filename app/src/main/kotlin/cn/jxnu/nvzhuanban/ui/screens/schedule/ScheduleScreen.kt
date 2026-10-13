@@ -68,10 +68,8 @@ import cn.jxnu.nvzhuanban.ui.components.RefreshIconButton
 import cn.jxnu.nvzhuanban.ui.components.StateScaffold
 import cn.jxnu.nvzhuanban.ui.components.UiState
 import cn.jxnu.nvzhuanban.ui.components.rememberTransientErrorSnackbar
-import kotlinx.coroutines.delay
-import java.time.Duration
+import cn.jxnu.nvzhuanban.ui.screens.calendar.rememberCalendarDate
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
 internal val LEFT_LABEL_WIDTH = 36.dp
@@ -255,20 +253,8 @@ fun ScheduleScreen(
         showEveningSheet = false
     }
 
-    // 「今天」做成可观察状态：页面驻留跨过 00:00（尤其周日→周一）后，「今」列头、今日列底色
-    // 和"上课中/下节"高亮都要跟着走。到点校准一次而不是每分钟轮询。
-    var today by remember { mutableStateOf(LocalDate.now()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            val now = LocalDateTime.now()
-            val untilMidnight = Duration.between(now, now.toLocalDate().plusDays(1).atStartOfDay())
-            delay(untilMidnight.toMillis() + 1_000L)
-            today = LocalDate.now()
-            // currentWeek / 假期横幅只在数据落点重算，这里补一次跨零点自愈：
-            // 周日→周一跨周时不重算的话「今」列高亮会落在上一周的网格上
-            viewModel.onDayChanged()
-        }
-    }
+    // 页面重入、恢复前台或跨日时同时校准日期与周次，避免保留的 ViewModel 仍停在上一周。
+    val today = rememberScheduleDate(onDayChanged = viewModel::onDayChanged)
     // 仅当用户当前选中的是"本周"时，今天列才高亮。否则切到别的周看课表时不该有"今天"概念。
     // currentWeek 来自 VM state，refresh/loadWeek 推进真实周后这里会自动重算。
     val todayWeekday: Int =
@@ -485,6 +471,20 @@ fun ScheduleScreen(
             )
         }
     }
+}
+
+/** 页面日期与 ViewModel 的周次一起推进；可注入日期以覆盖离开页面后跨周返回。 */
+@Composable
+internal fun rememberScheduleDate(
+    onDayChanged: (LocalDate) -> Unit,
+    todayProvider: () -> LocalDate = LocalDate::now,
+): LocalDate {
+    val today = rememberCalendarDate(todayProvider)
+    val currentOnDayChanged by rememberUpdatedState(onDayChanged)
+    LaunchedEffect(today) {
+        currentOnDayChanged(today)
+    }
+    return today
 }
 
 /**

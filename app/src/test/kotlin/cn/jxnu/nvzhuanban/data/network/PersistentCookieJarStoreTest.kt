@@ -9,6 +9,10 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.locks.ReentrantReadWriteLock
 
 /**
  * [PersistentCookieJar] 的内存过滤规则 + 落盘协议。用 internal 的 File 构造器把 filesDir
@@ -87,6 +91,83 @@ class PersistentCookieJarStoreTest {
     }
 
     @Test
+    fun `clearAll rejects a response already waiting to save cookies`() {
+        val jar = newJar()
+        // 固定真实竞争顺序：响应已经进入 saveFromResponse、等待写锁时，logout 抢先清空。
+        // 直接控制已有锁，避免为测试在生产代码插入延迟或回调。
+        val lock = cookieLock(jar)
+        val responseFailure = AtomicReference<Throwable?>()
+        val response = Thread {
+            runCatching { jar.saveFromResponse(jwcUrl, listOf(sessionCookie(value = "old-response"))) }
+                .exceptionOrNull()?.let(responseFailure::set)
+        }.apply { isDaemon = true }
+
+        lock.writeLock().lock()
+        try {
+            response.start()
+            waitUntil(2_000L) { lock.hasQueuedThread(response) }
+            assertTrue("响应必须已进入保存流程并等待写锁", lock.hasQueuedThread(response))
+            // ReentrantReadWriteLock 允许当前线程重入，因此确定地在旧响应写入前完成 logout。
+            jar.clearAll()
+            assertTrue(jar.loadForRequest(jwcUrl).isEmpty())
+        } finally {
+            lock.writeLock().unlock()
+            response.join(2_000L)
+        }
+
+        assertFalse("旧响应线程不能死锁", response.isAlive)
+        responseFailure.get()?.let { throw AssertionError("响应保存失败", it) }
+        assertTrue("logout 后旧响应不能重新插入 cookie", jar.loadForRequest(jwcUrl).isEmpty())
+        assertFalse(jar.hasJwcSession())
+        assertFalse(File(tmp.root, "jxnu_cookies.tsv").exists())
+        assertFalse(File(tmp.root, "jxnu_cookies.tsv.tmp").exists())
+    }
+
+    @Test
+    fun `clearAll waits for an active save then removes its memory and disk state`() {
+        val jar = newJar()
+        val lock = cookieLock(jar)
+        val saving = CountDownLatch(1)
+        val releaseResponse = CountDownLatch(1)
+        val failure = AtomicReference<Throwable?>()
+        val cookies = object : AbstractList<Cookie>() {
+            override val size = 1
+            override fun get(index: Int): Cookie {
+                // forEach 已在保存写锁里：让 logout 确定地等待这一批响应处理完成。
+                saving.countDown()
+                check(releaseResponse.await(2, TimeUnit.SECONDS)) { "响应未及时放行" }
+                return sessionCookie(value = "active-response")
+            }
+        }
+        val response = Thread {
+            runCatching { jar.saveFromResponse(jwcUrl, cookies) }.exceptionOrNull()?.let(failure::set)
+        }.apply { isDaemon = true }
+        val logout = Thread {
+            runCatching { jar.clearAll() }.exceptionOrNull()?.let(failure::set)
+        }.apply { isDaemon = true }
+
+        try {
+            response.start()
+            assertTrue("响应必须已经持有写锁", saving.await(2, TimeUnit.SECONDS))
+            logout.start()
+            waitUntil(2_000L) { lock.hasQueuedThread(logout) }
+            assertTrue("logout 必须等待正在保存的响应", lock.hasQueuedThread(logout))
+        } finally {
+            releaseResponse.countDown()
+            response.join(2_000L)
+            logout.join(2_000L)
+        }
+
+        assertFalse(response.isAlive)
+        assertFalse(logout.isAlive)
+        failure.get()?.let { throw AssertionError("并发保存/退出失败", it) }
+        assertTrue(jar.loadForRequest(jwcUrl).isEmpty())
+        assertFalse(File(tmp.root, "jxnu_cookies.tsv").exists())
+        assertFalse(File(tmp.root, "jxnu_cookies.tsv.tmp").exists())
+        assertFalse(newJar().hasJwcSession())
+    }
+
+    @Test
     fun `clearForHost resumes acceptance`() {
         val jar = newJar()
         jar.saveFromResponse(jwcUrl, listOf(sessionCookie()))
@@ -150,4 +231,10 @@ class PersistentCookieJarStoreTest {
             Thread.sleep(20)
         }
     }
+
+    private fun cookieLock(jar: PersistentCookieJar): ReentrantReadWriteLock =
+        PersistentCookieJar::class.java.getDeclaredField("lock").let {
+            it.isAccessible = true
+            it.get(jar) as ReentrantReadWriteLock
+        }
 }

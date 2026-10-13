@@ -81,6 +81,12 @@ class AnnouncementViewModel(
 
     /** 当前已加载到的最后一页（从 1 开始）。下拉刷新时回到 1。 */
     private var currentPage: Int = 1
+    /** 首页的 partial/full 与后续页分别保存，任一响应都不能覆盖另一部分。 */
+    private var firstPageItems: List<Announcement> = emptyList()
+    private var laterPageItems: List<Announcement> = emptyList()
+    private var paginationExhausted = false
+    private var firstPageJob: Job? = null
+    private var firstPageRequestId: Long = 0L
     private var loadMoreJob: Job? = null
     private var loadMoreRequestId: Long = 0L
     /** 上一次 loadMore 失败的时间戳。短期冷却（5s）内不再自动重试，避免反复滚动刷屏式打教务网。 */
@@ -92,7 +98,7 @@ class AnnouncementViewModel(
     /**
      * 首次加载 / Error 重试。两阶段订阅 [AnnouncementRepository.firstPageFlow]：
      *   - 中间值（通知 + 通告）到达：state → Success(partial)，列表立刻可见；
-     *   - 终值（含图文新闻）到达：state → Success(full)，并写 anchor 记为已读。
+     *   - 终值（含图文新闻）到达：替换首页、保留已加载分页，并写 anchor 记为已读。
      *
      * 失败语义：
      *   - partial 都没拿到 → state 切 Error；
@@ -100,34 +106,7 @@ class AnnouncementViewModel(
      *     （等下次进 tab 或刷新时再试图拿全量）。
      */
     fun load() {
-        cancelLoadMore()
-        _state.value = _state.value.copy(data = UiState.Loading, hasMore = true)
-        currentPage = 1
-        lastLoadMoreFailureAt = 0L
-        viewModelScope.launch {
-            var sawAny = false
-            var fullSeen = false
-            try {
-                firstPageFlow().collect { list ->
-                    sawAny = true
-                    _state.value = _state.value.copy(
-                        data = UiState.Success(list),
-                        hasMore = list.isNotEmpty(),
-                    )
-                }
-                // collect 自然结束 = full 已经 emit 过
-                fullSeen = true
-            } catch (t: Throwable) {
-                if (!sawAny) {
-                    _state.value = _state.value.copy(data = UiState.Error(t.toUserMessage()))
-                }
-                // 否则:partial 已展示,图文那一路挂了,静默保留 partial UI
-            }
-            if (fullSeen) {
-                val s = _state.value.data
-                if (s is UiState.Success) markTopAsRead(s.data)
-            }
-        }
+        startFirstPage(refresh = false)
     }
 
     /**
@@ -136,36 +115,70 @@ class AnnouncementViewModel(
      */
     fun refresh() {
         if (_isRefreshing.value) return
+        startFirstPage(refresh = true)
+    }
+
+    private fun startFirstPage(refresh: Boolean) {
+        val requestId = ++firstPageRequestId
+        firstPageJob?.cancel()
         cancelLoadMore()
-        _isRefreshing.value = true
-        viewModelScope.launch {
-            var fullSeen = false
+        _isRefreshing.value = refresh
+        if (!refresh) {
+            firstPageItems = emptyList()
+            laterPageItems = emptyList()
+            paginationExhausted = false
+            currentPage = 1
+            lastLoadMoreFailureAt = 0L
+            _state.value = _state.value.copy(data = UiState.Loading, hasMore = true)
+        }
+        firstPageJob = viewModelScope.launch {
+            var sawAny = false
             try {
                 firstPageFlow().collect { list ->
-                    currentPage = 1
-                    lastLoadMoreFailureAt = 0L  // 显式刷新清掉冷却
+                    if (requestId != firstPageRequestId) return@collect
+                    if (!sawAny) {
+                        // 刷新真正拿到新首页后才丢弃旧分页；失败时仍可沿旧列表继续翻页。
+                        currentPage = 1
+                        laterPageItems = emptyList()
+                        paginationExhausted = false
+                        lastLoadMoreFailureAt = 0L
+                    }
+                    sawAny = true
+                    firstPageItems = list
                     _state.value = _state.value.copy(
-                        data = UiState.Success(list),
-                        hasMore = list.isNotEmpty(),
+                        data = UiState.Success(mergedPages()),
+                        // 如果 partial 期间已翻到空页，full 到达不能重新开启分页。
+                        hasMore = !paginationExhausted && (list.isNotEmpty() || laterPageItems.isNotEmpty()),
                     )
                 }
-                fullSeen = true
+                // collect 自然结束 = full 已经 emit；锚点只取首页，不能取已混入的后续页。
+                if (requestId == firstPageRequestId && sawAny) markTopAsRead(firstPageItems)
             } catch (t: Throwable) {
-                // 失败保留旧 state(若 partial 已 emit 则保留 partial)，但要弹一次性提示——
-                // 转圈停了会被误读成"刷新完成、列表就是最新"
-                _refreshFailed.tryEmit(t.toUserMessage("刷新失败"))
+                if (t is CancellationException) throw t
+                if (requestId != firstPageRequestId) return@launch
+                if (_state.value.data !is UiState.Success) {
+                    _state.value = _state.value.copy(data = UiState.Error(t.toUserMessage()))
+                } else if (refresh) {
+                    // 刷新失败保留已展示列表，但给出提示；首次 partial 降级沿用静默语义。
+                    _refreshFailed.tryEmit(t.toUserMessage("刷新失败"))
+                }
             } finally {
-                _isRefreshing.value = false
-            }
-            if (fullSeen) {
-                val s = _state.value.data
-                if (s is UiState.Success) markTopAsRead(s.data)
+                if (requestId == firstPageRequestId) {
+                    _isRefreshing.value = false
+                    firstPageJob = null
+                }
             }
         }
     }
 
+    private fun mergedPages(): List<Announcement> =
+        (firstPageItems + laterPageItems)
+            .distinctBy { it.uniqueKey }
+            .sortedByDescending { it.date }
+
     /**
-     * 加载下一页。前置条件：当前 data 是 Success 且 hasMore=true，且无并发刷新/加载。
+     * 加载下一页。当前 data 是 Success 且 hasMore=true、无并发刷新/翻页即可；首页 partial
+     * 展示后便允许分页，后续 full 到达只更新首页部分。
      * 拉到空页则把 hasMore 置 false 不再追加。
      */
     fun loadMore() {
@@ -174,7 +187,7 @@ class AnnouncementViewModel(
         if (_isLoadingMore.value || _isRefreshing.value) return
         // 失败冷却：上次 loadMore 抛错后 5s 内不再自动重试，避免用户滚动反复打教务网
         if (System.currentTimeMillis() - lastLoadMoreFailureAt < loadMoreCooldownMs) return
-        val current = (s.data as? UiState.Success)?.data ?: return
+        if (s.data !is UiState.Success) return
 
         val requestId = ++loadMoreRequestId
         _isLoadingMore.value = true
@@ -184,14 +197,13 @@ class AnnouncementViewModel(
                 val more = fetchPage(nextPage)
                 if (requestId != loadMoreRequestId) return@launch
                 if (more.isEmpty()) {
+                    paginationExhausted = true
                     _state.value = _state.value.copy(hasMore = false)
                 } else {
                     currentPage = nextPage
                     // 去重：教务网偶发两页之间数据回流；按 (type, id) 去重
-                    val merged = (current + more)
-                        .distinctBy { "${it.type}_${it.id}" }
-                        .sortedByDescending { it.date }
-                    _state.value = _state.value.copy(data = UiState.Success(merged))
+                    laterPageItems = (laterPageItems + more).distinctBy { it.uniqueKey }
+                    _state.value = _state.value.copy(data = UiState.Success(mergedPages()))
                 }
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t

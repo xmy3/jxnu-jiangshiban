@@ -71,7 +71,7 @@ class TodayScheduleWidget : GlanceAppWidget() {
         }.getOrDefault(ScheduleSnapshot.empty())
         val today = LocalDate.now()
         val nowMins = LocalTime.now().let { it.hour * 60 + it.minute }
-        // 按节次排序，保证 nextCourseFromNow 的 firstOrNull 拿到的真是"最早还没结束"那节。
+        // 按节次排序，保证 nextWidgetCourse 的 firstOrNull 拿到的真是"最早还没结束"那节。
         // coursesOn 内部本来就 sortedBy { startSection }，这里防御性再保证一次。
         val courses = snapshot.coursesOn(today).sortedBy { it.startSection }
         val week = snapshot.weekAt(today)
@@ -234,9 +234,8 @@ class TodayScheduleWidget : GlanceAppWidget() {
             return
         }
 
-        val next = nextCourseFromNow(courses, nowMins)
-        val isOngoing = next != null &&
-            nowMins in SectionTimetable.startMinutes(next.startSection)..SectionTimetable.endMinutes(next.endSection)
+        val next = nextWidgetCourse(courses, nowMins)
+        val isOngoing = next != null && isWidgetCourseOngoing(next, nowMins)
         Column(modifier = GlanceModifier.fillMaxSize()) {
             if (next != null) {
                 NextHighlight(next, isOngoing)
@@ -440,13 +439,6 @@ class TodayScheduleWidget : GlanceAppWidget() {
         if (start == end) "第 $start 节" else "第 $start-$end 节"
 
     /**
-     * 找出"下一节"——当前时间还没结束的最近一节课。
-     * 节次时间来自 [SectionTimetable]（江师大《本科教学作息时间表》），跟主 App 课表共用同一份。
-     */
-    private fun nextCourseFromNow(courses: List<SnapshotCourse>, nowMins: Int): SnapshotCourse? =
-        courses.firstOrNull { c -> SectionTimetable.endMinutes(c.endSection) >= nowMins }
-
-    /**
      * Glance items 用的稳定标识。课程名 + 节次 + weekday 足够标识"当天这一节课"，
      * 不会跨课程冲突。Long 是因为 items(itemId) 要求 Long 返回。
      *
@@ -454,6 +446,13 @@ class TodayScheduleWidget : GlanceAppWidget() {
      */
     private fun stableId(c: SnapshotCourse): Long = snapshotCourseItemId(c)
 }
+
+/** 下课分钟已经结束，与调度器在结束分钟安排重绘的边界一致。 */
+internal fun nextWidgetCourse(courses: List<SnapshotCourse>, nowMins: Int): SnapshotCourse? =
+    courses.firstOrNull { c -> SectionTimetable.endMinutes(c.endSection) > nowMins }
+
+internal fun isWidgetCourseOngoing(course: SnapshotCourse, nowMins: Int): Boolean =
+    nowMins in SectionTimetable.startMinutes(course.startSection) until SectionTimetable.endMinutes(course.endSection)
 
 /**
  * 把一节 [SnapshotCourse] 映射到 Glance `LazyColumn.items(itemId = ...)` 用的稳定 Long。

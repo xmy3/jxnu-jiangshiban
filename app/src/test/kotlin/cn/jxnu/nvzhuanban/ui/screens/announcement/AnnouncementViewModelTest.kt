@@ -10,6 +10,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -26,6 +29,217 @@ class AnnouncementViewModelTest {
 
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
+
+    @Test
+    fun `full first page preserves pages loaded after the partial result`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val partial = listOf(announcement("first", "第一页"))
+            val full = partial + announcement("picture", "图文新闻")
+            val releaseFull = CompletableDeferred<Unit>()
+            val requestedPages = mutableListOf<Int>()
+            val viewModel = AnnouncementViewModel(
+                firstPageFlow = { flow { emit(partial); releaseFull.await(); emit(full) } },
+                fetchPage = { page ->
+                    requestedPages += page
+                    listOf(announcement("page-$page", "第 $page 页", day = 1))
+                },
+            )
+            try {
+                runCurrent()
+                viewModel.loadMore()
+                runCurrent()
+                assertAnnouncements(viewModel, partial + announcement("page-2", "第 2 页", day = 1))
+
+                releaseFull.complete(Unit)
+                runCurrent()
+                assertAnnouncements(viewModel, full + announcement("page-2", "第 2 页", day = 1))
+
+                viewModel.loadMore()
+                runCurrent()
+                assertAnnouncements(viewModel, full + listOf(
+                    announcement("page-2", "第 2 页", day = 1),
+                    announcement("page-3", "第 3 页", day = 1),
+                ))
+                assertEquals(listOf(2, 3), requestedPages)
+            } finally { viewModel.viewModelScope.cancel() }
+        }
+
+    @Test
+    fun `late second page preserves the full first page`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val partial = listOf(announcement("first", "第一页"))
+            val full = partial + announcement("picture", "图文新闻")
+            val secondPage = listOf(announcement("second", "第二页", day = 1))
+            val releaseFull = CompletableDeferred<Unit>()
+            val releaseSecond = CompletableDeferred<Unit>()
+            val viewModel = AnnouncementViewModel(
+                firstPageFlow = { flow { emit(partial); releaseFull.await(); emit(full) } },
+                fetchPage = { releaseSecond.await(); secondPage },
+            )
+            try {
+                runCurrent()
+                viewModel.loadMore()
+                runCurrent()
+                releaseFull.complete(Unit)
+                runCurrent()
+                assertAnnouncements(viewModel, full)
+                releaseSecond.complete(Unit)
+                runCurrent()
+                assertAnnouncements(viewModel, full + secondPage)
+            } finally { viewModel.viewModelScope.cancel() }
+        }
+
+    @Test
+    fun `refresh invalidates an older first-page stream even if it ignores cancellation`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val partial = listOf(announcement("old", "旧第一页"))
+            val refreshed = listOf(announcement("new", "刷新第一页"))
+            val releaseOld = CompletableDeferred<Unit>()
+            var firstPageCalls = 0
+            val viewModel = AnnouncementViewModel(
+                firstPageFlow = {
+                    if (++firstPageCalls == 1) delayedUncancellablePage(partial, releaseOld)
+                    else flowOf(refreshed)
+                },
+            )
+            try {
+                runCurrent()
+                viewModel.refresh()
+                runCurrent()
+                assertAnnouncements(viewModel, refreshed)
+                releaseOld.complete(Unit)
+                runCurrent()
+                assertAnnouncements(viewModel, refreshed)
+                assertFalse(viewModel.isRefreshing.value)
+            } finally {
+                releaseOld.complete(Unit)
+                viewModel.viewModelScope.cancel()
+            }
+        }
+
+    @Test
+    fun `load invalidates an older refresh without leaving the refresh indicator active`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val initial = listOf(announcement("initial", "首次加载"))
+            val refreshPartial = listOf(announcement("refresh", "刷新中间值"))
+            val reloaded = listOf(announcement("reload", "重新加载"))
+            val releaseRefresh = CompletableDeferred<Unit>()
+            var firstPageCalls = 0
+            val viewModel = AnnouncementViewModel(
+                firstPageFlow = {
+                    when (++firstPageCalls) {
+                        1 -> flowOf(initial)
+                        2 -> delayedUncancellablePage(refreshPartial, releaseRefresh)
+                        else -> flowOf(reloaded)
+                    }
+                },
+            )
+            try {
+                runCurrent()
+                viewModel.refresh()
+                runCurrent()
+                assertTrue(viewModel.isRefreshing.value)
+                viewModel.load()
+                runCurrent()
+                assertFalse(viewModel.isRefreshing.value)
+                assertAnnouncements(viewModel, reloaded)
+                releaseRefresh.complete(Unit)
+                runCurrent()
+                assertAnnouncements(viewModel, reloaded)
+            } finally {
+                releaseRefresh.complete(Unit)
+                viewModel.viewModelScope.cancel()
+            }
+        }
+
+    @Test
+    fun `failed full first page keeps partial data available for pagination`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val partial = listOf(announcement("partial", "部分首页"))
+            val secondPage = listOf(announcement("second", "第二页", day = 1))
+            val viewModel = AnnouncementViewModel(
+                firstPageFlow = { flow { emit(partial); error("图文暂时不可用") } },
+                fetchPage = { page -> assertEquals(2, page); secondPage },
+            )
+            try {
+                runCurrent()
+                viewModel.loadMore()
+                runCurrent()
+                assertAnnouncements(viewModel, partial + secondPage)
+                assertFalse(viewModel.isLoadingMore.value)
+            } finally { viewModel.viewModelScope.cancel() }
+        }
+
+    @Test
+    fun `nonempty full page enables pagination after an empty partial`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val full = listOf(announcement("picture", "图文新闻"))
+            val releaseFull = CompletableDeferred<Unit>()
+            val viewModel = AnnouncementViewModel(
+                firstPageFlow = { flow { emit(emptyList()); releaseFull.await(); emit(full) } },
+            )
+            try {
+                runCurrent()
+                assertFalse(viewModel.state.value.hasMore)
+                releaseFull.complete(Unit)
+                runCurrent()
+                assertAnnouncements(viewModel, full)
+                assertTrue(viewModel.state.value.hasMore)
+            } finally { viewModel.viewModelScope.cancel() }
+        }
+
+    @Test
+    fun `full first page does not reopen pagination after an empty next page`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val partial = listOf(announcement("partial", "部分首页"))
+            val releaseFull = CompletableDeferred<Unit>()
+            val viewModel = AnnouncementViewModel(
+                firstPageFlow = { flow { emit(partial); releaseFull.await(); emit(partial) } },
+                fetchPage = { emptyList() },
+            )
+            try {
+                runCurrent()
+                viewModel.loadMore()
+                runCurrent()
+                assertFalse(viewModel.state.value.hasMore)
+                releaseFull.complete(Unit)
+                runCurrent()
+                assertFalse(viewModel.state.value.hasMore)
+            } finally { viewModel.viewModelScope.cancel() }
+        }
+
+    @Test
+    fun `refresh failure before partial preserves the old page cursor`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val initial = listOf(announcement("initial", "首页"))
+            val requestedPages = mutableListOf<Int>()
+            var firstPageCalls = 0
+            val viewModel = AnnouncementViewModel(
+                firstPageFlow = {
+                    if (++firstPageCalls == 1) flowOf(initial)
+                    else flow { error("刷新失败") }
+                },
+                fetchPage = { page ->
+                    requestedPages += page
+                    listOf(announcement("page-$page", "第 $page 页", day = 1))
+                },
+            )
+            try {
+                runCurrent()
+                viewModel.loadMore()
+                runCurrent()
+                viewModel.refresh()
+                runCurrent()
+                assertFalse(viewModel.isRefreshing.value)
+                viewModel.loadMore()
+                runCurrent()
+                assertAnnouncements(viewModel, initial + listOf(
+                    announcement("page-2", "第 2 页", day = 1),
+                    announcement("page-3", "第 3 页", day = 1),
+                ))
+                assertEquals(listOf(2, 3), requestedPages)
+            } finally { viewModel.viewModelScope.cancel() }
+        }
 
     @Test
     fun `refresh result is not replaced by an older load-more response`() =
@@ -69,6 +283,19 @@ class AnnouncementViewModelTest {
             assertFalse(viewModel.isRefreshing.value)
             viewModel.viewModelScope.cancel()
         }
+
+    private fun delayedUncancellablePage(
+        partial: List<Announcement>,
+        release: CompletableDeferred<Unit>,
+    ): Flow<List<Announcement>> = object : Flow<List<Announcement>> {
+        override suspend fun collect(collector: FlowCollector<List<Announcement>>) {
+            collector.emit(partial)
+            withContext(NonCancellable) {
+                release.await()
+                collector.emit(partial + announcement("late", "过期终值"))
+            }
+        }
+    }
 
     private fun assertAnnouncements(
         viewModel: AnnouncementViewModel,

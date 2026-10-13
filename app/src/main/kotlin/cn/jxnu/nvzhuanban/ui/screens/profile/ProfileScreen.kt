@@ -100,11 +100,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import cn.jxnu.nvzhuanban.R
 import cn.jxnu.nvzhuanban.data.model.AppRelease
 import cn.jxnu.nvzhuanban.data.model.Exam
-import cn.jxnu.nvzhuanban.data.model.ExamStatus
 import cn.jxnu.nvzhuanban.data.model.UserProfile
 import cn.jxnu.nvzhuanban.data.model.formatCredit
 import cn.jxnu.nvzhuanban.data.repository.ExamRepository
 import cn.jxnu.nvzhuanban.data.repository.GraduationAuditRepository
+import cn.jxnu.nvzhuanban.data.repository.MakeupExamRepository
 import cn.jxnu.nvzhuanban.data.storage.AvatarPrefs
 import cn.jxnu.nvzhuanban.data.storage.ThemeMode
 import cn.jxnu.nvzhuanban.data.storage.ThemePrefs
@@ -112,6 +112,7 @@ import cn.jxnu.nvzhuanban.ui.components.RefreshIconButton
 import cn.jxnu.nvzhuanban.ui.components.RemoteJwcImage
 import cn.jxnu.nvzhuanban.ui.components.StateScaffold
 import cn.jxnu.nvzhuanban.ui.screens.announcement.openExternalHttpUrl
+import cn.jxnu.nvzhuanban.ui.screens.calendar.rememberCalendarDate
 import cn.jxnu.nvzhuanban.ui.theme.AppShape
 import cn.jxnu.nvzhuanban.ui.theme.NvzhuanbanTheme
 import cn.jxnu.nvzhuanban.ui.widget.WidgetPinResultReceiver
@@ -121,7 +122,6 @@ import cn.jxnu.nvzhuanban.ui.widget.pinnedTodayScheduleWidgetCount
 import cn.jxnu.nvzhuanban.ui.widget.requestPinTodayScheduleWidget
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
 
 /** 官网首页即下载页（APK 与 GitHub Release 同包同 SHA）；更新弹窗与关于页共用。 */
 private const val OFFICIAL_WEBSITE_URL = "https://jsb.betterjxnu.cn/"
@@ -618,6 +618,7 @@ private fun GradesEntryCard(
     // 0 网络），失败静默显示「—」不打扰——同 UpcomingExamBanner 的设计取舍。
     var minimumCredits by remember { mutableStateOf<Float?>(null) }
     var exams by remember { mutableStateOf<List<Exam>?>(null) }
+    var makeupCount by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(Unit) {
         minimumCredits = runCatching {
             GraduationAuditRepository.instance.fetch().minimumCredits
@@ -626,13 +627,12 @@ private fun GradesEntryCard(
     LaunchedEffect(Unit) {
         exams = runCatching { ExamRepository.instance.fetchAll() }.getOrNull()
     }
-    val now = remember { LocalDateTime.now() }
-    val nearestDays: Long? = remember(exams, now) {
-        exams?.asSequence()
-            ?.filter { it.statusAt(now) != ExamStatus.FINISHED }
-            ?.map { it.daysLeftFrom(now) }
-            ?.filter { it >= 0L }
-            ?.minOrNull()
+    LaunchedEffect(Unit) {
+        makeupCount = runCatching { MakeupExamRepository.instance.fetchAll().size }.getOrNull()
+    }
+    val today = rememberCalendarDate()
+    val examSummary = remember(exams, makeupCount, today) {
+        profileExamSummary(exams, makeupCount, today.atStartOfDay())
     }
 
     // 动画状态必须无条件持有：若放进 if(>0) 分支，enrich 首次把学分从 0 填成
@@ -664,19 +664,8 @@ private fun GradesEntryCard(
             onClick = onOpenTrainingPlan,
         )
         StatTile(
-            value = when (nearestDays) {
-                null -> "—"
-                0L -> "今天"
-                else -> "$nearestDays 天"
-            },
-            // 三态：有待考 → 倒计时；确认拉到列表但没有待考 → 「暂无待考」；
-            // 拉取失败/还没拉到（exams == null）→ 中性的「考试安排」——不能把网络失败
-            // 说成确定性的"没有考试"，明天有考试但此刻断网的人会被误导。
-            label = when {
-                nearestDays != null -> "距下场考试"
-                exams != null -> "暂无待考"
-                else -> "考试安排"
-            },
+            value = examSummary.value,
+            label = examSummary.label,
             modifier = Modifier.weight(1f),
             onClick = onOpenExams,
         )

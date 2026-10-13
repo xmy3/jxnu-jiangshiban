@@ -258,10 +258,7 @@ fun AppNav() {
 
     LaunchedEffect(authState, currentRoute) {
         if (authState is AuthState.Error && currentRoute != null && currentRoute != Routes.LOGIN) {
-            nav.navigate(Routes.LOGIN) {
-                popUpTo(0) { inclusive = true }
-                launchSingleTop = true
-            }
+            nav.navigateToLogin()
         }
     }
 
@@ -469,11 +466,7 @@ fun AppNav() {
             }
             composable(Routes.PROFILE) {
                 ProfileScreen(
-                    onLogout = {
-                        nav.navigate(Routes.LOGIN) {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    },
+                    onLogout = { nav.navigateToLogin() },
                     onOpenGrades = { nav.navigate(Routes.GRADES) },
                     onOpenStudentInfo = { nav.navigate(Routes.STUDENT_INFO) },
                     onOpenClassroom = { nav.navigate(Routes.CLASSROOM) },
@@ -497,15 +490,20 @@ fun AppNav() {
                     onBack = { nav.popBackStack() },
                     // 「需要登录」占位页的「去登录」：清空回退栈进 app 内登录页，
                     // 与会话过期那条 (LaunchedEffect(authState)) 保持一致写法。
-                    onNavigateToLogin = {
-                        nav.navigate(Routes.LOGIN) {
-                            popUpTo(0) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    },
+                    onNavigateToLogin = { nav.navigateToLogin() },
                 )
             }
         }
+    }
+}
+
+internal fun NavHostController.navigateToLogin() {
+    // popUpTo 只清活动栈；底部标签 saveState 保存的 ViewModel 必须单独销毁，
+    // 否则换账号后 restoreState 会恢复上一用户的个人资料。
+    TABS.forEach { clearBackStack(it.route) }
+    navigate(Routes.LOGIN) {
+        popUpTo(0) { inclusive = true }
+        launchSingleTop = true
     }
 }
 

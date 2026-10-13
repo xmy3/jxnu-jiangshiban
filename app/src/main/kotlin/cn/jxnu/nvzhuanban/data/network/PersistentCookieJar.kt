@@ -39,15 +39,15 @@ class PersistentCookieJar internal constructor(filesDir: File) : CookieJar {
 
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
         if (cookies.isEmpty()) return
-        // [stopped] 拦截 clearAll 之后到达的"漏网"cookie，避免它们重建刚被清掉的会话文件。
-        // login() / clearForHost() 会显式 resume()，恢复后正常接收。
-        if (stopped) return
         // host 白名单：本 CookieJar 只为 *.jxnu.edu.cn 服务。共享同一个 OkHttp 实例时，
         // 任何第三方主机（CDN / 统计 / GitHub）的 Set-Cookie 都不允许污染 jxnu_cookies.tsv，
         // 否则下次 CAS 重定向链上 OkHttp 可能把第三方 cookie 错发给 jwc，或者 cookie 文件越来越大。
         // GitHubUpdateClient 用独立 OkHttp 是已知规避手段；这里再加一道结构性兜底。
         if (!url.host.isJxnuHost()) return
         lock.write {
+            // 栅门必须与写入共用写锁：响应可能在 clearAll 前进入本方法、到清空后才拿到锁。
+            // 只在锁外检查会让该响应把旧会话重新插回内存。
+            if (stopped) return
             cookies.forEach { c ->
                 // 二次防御：服务器若把 cookie 的 Domain 设到非 jxnu 域（极少见的开放重定向场景），
                 // 也一并丢弃。`Cookie.matches(url)` 已经保证 domain 是 url.host 的同域或父域，
@@ -97,15 +97,19 @@ class PersistentCookieJar internal constructor(filesDir: File) : CookieJar {
         return matching
     }
 
-    /** 清空所有 cookie（退出登录时调用）。会阻止后续 [saveFromResponse] 直到下一次 [resume]。 */
+    /** 清空所有 cookie（退出登录时调用）。会阻止后续 [saveFromResponse] 直到下一次 [clearForHost]。 */
     fun clearAll() {
-        lock.write { byDomain.clear() }
-        synchronized(persistLock) {
+        lock.write {
             stopped = true
-            persistGeneration++
-            dirty = false
-            runCatching { cookieFile.delete() }
-            runCatching { tmpFile.delete() }
+            byDomain.clear()
+            // 嵌套时固定 lock → persistLock；落盘线程取快照后先释放读锁再取 persistLock。
+            // 清空/恢复接收与磁盘 generation 同步完成，避免另一次 login 插到清理中间。
+            synchronized(persistLock) {
+                persistGeneration++
+                dirty = false
+                runCatching { cookieFile.delete() }
+                runCatching { tmpFile.delete() }
+            }
         }
     }
 
@@ -139,18 +143,13 @@ class PersistentCookieJar internal constructor(filesDir: File) : CookieJar {
                 }
             }
             if (changed) byDomain.entries.removeAll { (_, v) -> v.isEmpty() }
-        }
-        if (changed) {
             synchronized(persistLock) {
-                stopped = false  // login 链路立刻会写入新 cookie，确保 saveFromResponse 不被拦
-                persistGeneration++
+                // 没有 cookie 要清也恢复接收；与 clearAll / saveFromResponse 共用写锁。
+                stopped = false
+                if (changed) persistGeneration++
             }
-            persistAsync()
-        } else {
-            // 没有 cookie 要清也至少把 stopped 复位 —— clearForHost 是 login 起手仪式，调用方期望
-            // 后续的 saveFromResponse 一定能落库。
-            synchronized(persistLock) { stopped = false }
         }
+        if (changed) persistAsync()
     }
 
     /**
@@ -204,6 +203,7 @@ class PersistentCookieJar internal constructor(filesDir: File) : CookieJar {
     /**
      * "拒绝接收新 cookie"的栅门。[clearAll] 置 true，[clearForHost] 置 false。
      * 防止 logout 后还在飞的 OkHttp 响应通过 [saveFromResponse] 把会话 cookie 重新落库。
+     * 变更及响应写入检查均持有 [lock] 的写锁；volatile 供后台持久化线程读取。
      */
     @Volatile private var stopped = false
 
