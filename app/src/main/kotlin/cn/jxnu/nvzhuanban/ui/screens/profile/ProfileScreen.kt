@@ -101,7 +101,9 @@ import cn.jxnu.nvzhuanban.R
 import cn.jxnu.nvzhuanban.data.model.AppRelease
 import cn.jxnu.nvzhuanban.data.model.Exam
 import cn.jxnu.nvzhuanban.data.model.UserProfile
+import cn.jxnu.nvzhuanban.data.model.earnedCreditsOf
 import cn.jxnu.nvzhuanban.data.model.formatCredit
+import cn.jxnu.nvzhuanban.data.model.graduationProgressPercent
 import cn.jxnu.nvzhuanban.data.repository.ExamRepository
 import cn.jxnu.nvzhuanban.data.repository.GraduationAuditRepository
 import cn.jxnu.nvzhuanban.data.repository.MakeupExamRepository
@@ -617,12 +619,16 @@ private fun GradesEntryCard(
     // 毕业最低学分 / 考试数据 best-effort 复用各 Repository 内存缓存（进过对应页即命中，
     // 0 网络），失败静默显示「—」不打扰——同 UpcomingExamBanner 的设计取舍。
     var minimumCredits by remember { mutableStateOf<Float?>(null) }
+    // 毕业审核页的「当前所修学分总数」：只含培养方案内课程。与成绩页累计取大才是
+    // 培养方案页显示的同一个「已修学分」，两格数字（已修/毕业进度）必须同源。
+    var planCredits by remember { mutableStateOf<Float?>(null) }
     var exams by remember { mutableStateOf<List<Exam>?>(null) }
     var makeupCount by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(Unit) {
-        minimumCredits = runCatching {
-            GraduationAuditRepository.instance.fetch().minimumCredits
-        }.getOrNull()
+        runCatching { GraduationAuditRepository.instance.fetch() }.getOrNull()?.let { parsed ->
+            minimumCredits = parsed.minimumCredits
+            planCredits = parsed.trainingPlan.currentCredits
+        }
     }
     LaunchedEffect(Unit) {
         exams = runCatching { ExamRepository.instance.fetchAll() }.getOrNull()
@@ -635,24 +641,25 @@ private fun GradesEntryCard(
         profileExamSummary(exams, makeupCount, today.atStartOfDay())
     }
 
+    // 与培养方案页、成绩页头部的「已修学分」共用同一口径：max(培养方案内, 成绩页累计)。
+    // 成绩页还没 enrich 完（cumulativeCredits == 0）时也能用毕业审核的学分先显示，不再干等「—」。
+    val earnedCredits = earnedCreditsOf(planCredits, cumulativeCredits)
+    val progressPercent = graduationProgressPercent(earnedCredits, minimumCredits)
+
     // 动画状态必须无条件持有：若放进 if(>0) 分支，enrich 首次把学分从 0 填成
     // 正值时动画才首次组合、首帧直接落在真值，根本不会滚动。这里用 started 标志
     // 钉住首帧为 0，冷启动缓存命中（进屏就有值）也能播一次进场滚动。
     var creditsStarted by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { creditsStarted = true }
     val animatedCredits by animateFloatAsState(
-        targetValue = if (creditsStarted) cumulativeCredits else 0f,
+        targetValue = if (creditsStarted) earnedCredits ?: 0f else 0f,
         animationSpec = tween(durationMillis = 700),
         label = "credits",
     )
 
-    val progressPercent: Int? = minimumCredits
-        ?.takeIf { it > 0f && cumulativeCredits > 0f }
-        ?.let { ((cumulativeCredits / it) * 100).toInt().coerceIn(0, 100) }
-
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         StatTile(
-            value = if (cumulativeCredits > 0f) animatedCredits.formatCredit() else "—",
+            value = earnedCredits?.let { animatedCredits.formatCredit() } ?: "—",
             label = "已修学分",
             modifier = Modifier.weight(1f),
             onClick = onOpenGrades,

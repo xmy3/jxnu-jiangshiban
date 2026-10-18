@@ -163,8 +163,12 @@ private fun TrainingPlanList(plan: TrainingPlan) {
 
 @Composable
 private fun TrainingPlanSummary(plan: TrainingPlan) {
-    val current = plan.currentCredits
+    // 用 earnedCredits（培养方案内 + 成绩页累计的较大值）而不是 currentCredits：
+    // 毕业审核页的「当前所修学分总数」不含校外慕课/交流学分，直接显示会和
+    // 「我的 → 已修学分」「成绩页累计学分」差出慕课那部分。
+    val current = plan.earnedCredits
     val minimum = plan.minimumCredits
+    val external = plan.externalCredits
     var expanded by rememberSaveable { mutableStateOf(false) }
     val hasDetails = plan.overallStandardScore != null ||
         plan.degreeCourseTotal != null ||
@@ -184,17 +188,27 @@ private fun TrainingPlanSummary(plan: TrainingPlan) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = when {
-                        current != null && minimum != null -> "毕业进度 ${current.formatCredit()}/${minimum.formatCredit()} 学分"
-                        minimum != null -> "毕业最低 ${minimum.formatCredit()} 学分"
-                        else -> "毕业进度"
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.weight(1f),
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = when {
+                            current != null && minimum != null -> "毕业进度 ${current.formatCredit()}/${minimum.formatCredit()} 学分"
+                            current != null -> "已修 ${current.formatCredit()} 学分"
+                            minimum != null -> "毕业最低 ${minimum.formatCredit()} 学分"
+                            else -> "毕业进度"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    // 把口径差摊开写清楚：不标明的话用户会疑惑"分类学分加起来只有 59，为什么标题是 63"
+                    external?.let {
+                        Text(
+                            text = "含校外慕课 ${it.formatCredit()} 学分",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f),
+                        )
+                    }
+                }
                 if (hasDetails) {
                     Icon(
                         imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
@@ -241,6 +255,25 @@ private fun TrainingPlanSummary(plan: TrainingPlan) {
                                     )
                                     Text(
                                         text = "${item.earnedCredits.formatCredit()} 学分",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    )
+                                }
+                            }
+                            // 分类学分是毕业审核页的口径（不含慕课），补一行让明细加起来等于标题里的总数
+                            external?.let { ext ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        text = "校外慕课/交流（成绩页）",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f),
+                                    )
+                                    Text(
+                                        text = "${ext.formatCredit()} 学分",
                                         style = MaterialTheme.typography.bodySmall,
                                         fontWeight = FontWeight.Medium,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer,

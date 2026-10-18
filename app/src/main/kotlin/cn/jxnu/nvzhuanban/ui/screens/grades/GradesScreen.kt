@@ -55,6 +55,7 @@ import cn.jxnu.nvzhuanban.R
 import cn.jxnu.nvzhuanban.data.model.Grade
 import cn.jxnu.nvzhuanban.data.model.SemesterSummary
 import cn.jxnu.nvzhuanban.data.model.formatCredit
+import cn.jxnu.nvzhuanban.data.model.graduationProgressPercent
 import cn.jxnu.nvzhuanban.ui.components.BackNavigationIcon
 import cn.jxnu.nvzhuanban.ui.components.EmptyState
 import cn.jxnu.nvzhuanban.ui.components.ListSkeleton
@@ -153,6 +154,7 @@ private fun SemesterGradesContent(viewModel: GradesViewModel) {
                 GradesList(
                     semesters = semesters,
                     graduationMinimumCredits = data.graduationMinimumCredits,
+                    cumulativeCredits = data.cumulativeCredits,
                 )
             }
         }
@@ -163,12 +165,16 @@ private fun SemesterGradesContent(viewModel: GradesViewModel) {
 internal fun GradesList(
     semesters: List<SemesterSummary>,
     graduationMinimumCredits: Float?,
+    cumulativeCredits: Float? = null,
 ) {
     // 聚合统计放 remember 里 —— LazyColumn 滚动时 GradesList 频繁重组，
     // semesters 通常 6-8 个学期、几十门课，每次重算 sumOf/flatMap 没什么压力但完全没必要。
-    val aggregates = remember(semesters) {
+    val aggregates = remember(semesters, cumulativeCredits) {
         val allGrades = semesters.flatMap { it.grades }
-        val totalCredit = allGrades.sumOf { it.credit.toDouble() }.toFloat()
+        val summed = allGrades.sumOf { it.credit.toDouble() }.toFloat()
+        // 「已修学分」优先用教务官方累计值（与「我的」「培养方案」同源，含校外慕课）；
+        // 官方值缺失（lblMsg 没解析到）才退回逐门求和——两处口径不同时以官方为准。
+        val totalCredit = cumulativeCredits?.takeIf { it > 0f } ?: summed
         val totalWeighted = allGrades.mapNotNull { it.weightedGpa }.sum()
         val gpaCredit = allGrades.filter { it.gpa != null }.sumOf { it.credit.toDouble() }.toFloat()
         val cumGpa = if (gpaCredit > 0) totalWeighted / gpaCredit else null
@@ -278,14 +284,16 @@ private fun GpaHeaderCard(
                     modifier = Modifier.weight(1f),
                 )
             }
-            graduationMinimumCredits?.takeIf { it > 0f }?.let { minimum ->
-                val percent = ((totalCredit / minimum) * 100).toInt().coerceIn(0, 999)
-                Text(
-                    text = "毕业最低 ${minimum.formatCredit()} 学分 · 已完成 $percent%",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f),
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                )
+            graduationMinimumCredits?.let { minimum ->
+                // 与「我的」共用同一个百分比函数，避免两边钳位/取整规则再次分叉
+                graduationProgressPercent(totalCredit, minimum)?.let { percent ->
+                    Text(
+                        text = "毕业最低 ${minimum.formatCredit()} 学分 · 已完成 $percent%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f),
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    )
+                }
             }
         }
     }
