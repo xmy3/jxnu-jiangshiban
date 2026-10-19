@@ -5,5 +5,13 @@
             android:name=".ProfilePreviewActivity"
             android:label="轻量清单 · 示例预览"
             android:exported="true" />
+        <activity
+            android:name=".DebugAnnouncementPreviewActivity"
+            android:label="通知页 · 假数据预览"
+            android:exported="true" />
+        <activity
+            android:name=".DebugArticlePreviewActivity"
+            android:label="通知详情 · 假数据预览"
+            android:exported="true" />
     </application>
 </manifest>

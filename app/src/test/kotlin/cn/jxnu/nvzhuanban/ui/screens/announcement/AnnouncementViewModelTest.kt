@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import cn.jxnu.nvzhuanban.MainDispatcherRule
 import cn.jxnu.nvzhuanban.data.model.Announcement
 import cn.jxnu.nvzhuanban.data.model.AnnouncementType
+import cn.jxnu.nvzhuanban.data.storage.AnnouncementReadMarker
 import cn.jxnu.nvzhuanban.ui.components.UiState
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
@@ -284,6 +285,156 @@ class AnnouncementViewModelTest {
             viewModel.viewModelScope.cancel()
         }
 
+    @Test
+    fun `items newer than the saved anchor are unread`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val page = listOf(
+                announcement("new", "新通知", day = 3),
+                announcement("anchor", "上次看到的最新一条", day = 2),
+                announcement("old", "旧通知", day = 1),
+            )
+            val viewModel = AnnouncementViewModel(
+                firstPageFlow = { flowOf(page) },
+                lastReadMarker = { marker("NOTIFICATION:anchor", day = 2) },
+            )
+            try {
+                runCurrent()
+                // 只标锚点之前（更新）的那一条；锚点本身与其后的历史条目都算已读
+                assertEquals(setOf("NOTIFICATION:new"), viewModel.state.value.unreadKeys)
+            } finally { viewModel.viewModelScope.cancel() }
+        }
+
+    @Test
+    fun `same-day items above the anchor are unread`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val page = listOf(
+                announcement("a", "同一天第一条", day = 2),
+                announcement("anchor", "锚点", day = 2),
+                announcement("c", "同一天锚点之后", day = 2),
+            )
+            val viewModel = AnnouncementViewModel(
+                firstPageFlow = { flowOf(page) },
+                lastReadMarker = { marker("NOTIFICATION:anchor", day = 2) },
+            )
+            try {
+                runCurrent()
+                assertEquals(setOf("NOTIFICATION:a"), viewModel.state.value.unreadKeys)
+            } finally { viewModel.viewModelScope.cancel() }
+        }
+
+    @Test
+    fun `partial page missing the anchor does not mark older items unread`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 锚点是图文新闻（首屏 full 阶段才回来）；partial 只有更早的通知。
+            // 若按「下标找不到锚点就整页算新」，partial 一秒内会满屏红点。
+            val partial = listOf(announcement("notif", "昨天的通知", day = 1))
+            val full = partial + announcement(
+                "picture",
+                "图文新闻",
+                day = 2,
+                type = AnnouncementType.PICTURE_NEWS,
+            )
+            val releaseFull = CompletableDeferred<Unit>()
+            val viewModel = AnnouncementViewModel(
+                firstPageFlow = { flow { emit(partial); releaseFull.await(); emit(full) } },
+                lastReadMarker = { marker("PICTURE_NEWS:picture", day = 2) },
+            )
+            try {
+                runCurrent()
+                assertTrue(viewModel.state.value.unreadKeys.isEmpty())
+                releaseFull.complete(Unit)
+                runCurrent()
+                assertTrue(viewModel.state.value.unreadKeys.isEmpty())
+            } finally { viewModel.viewModelScope.cancel() }
+        }
+
+    @Test
+    fun `first refresh after install picks up the anchor written by the first load`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 全新安装第一次打开：没有锚点 → 不标未读；首次加载终值会把「顶部」写回锚点。
+            // 之后的刷新要能拿这份刚落盘的锚点，否则新通知永远不会有未读点。
+            var stored: AnnouncementReadMarker? = null
+            var page = listOf(announcement("old", "旧通知", day = 1))
+            val viewModel = AnnouncementViewModel(
+                firstPageFlow = { flowOf(page) },
+                lastReadMarker = { stored },
+            )
+            try {
+                runCurrent()
+                assertTrue(viewModel.state.value.unreadKeys.isEmpty())
+
+                // 模拟存储侧在首次加载终值处写入锚点
+                stored = marker("NOTIFICATION:old", day = 1)
+                page = listOf(
+                    announcement("new", "新通知", day = 3),
+                    announcement("old", "旧通知", day = 1),
+                )
+                viewModel.refresh()
+                runCurrent()
+                assertEquals(setOf("NOTIFICATION:new"), viewModel.state.value.unreadKeys)
+            } finally { viewModel.viewModelScope.cancel() }
+        }
+
+    @Test
+    fun `tapping an unread item keeps it read after a refresh`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val page = listOf(
+                announcement("new", "新通知", day = 3),
+                announcement("anchor", "锚点", day = 2),
+            )
+            val viewModel = AnnouncementViewModel(
+                firstPageFlow = { flowOf(page) },
+                lastReadMarker = { marker("NOTIFICATION:anchor", day = 2) },
+            )
+            try {
+                runCurrent()
+                assertEquals(setOf("NOTIFICATION:new"), viewModel.state.value.unreadKeys)
+
+                viewModel.markItemRead("NOTIFICATION:new")
+                assertTrue(viewModel.state.value.unreadKeys.isEmpty())
+
+                // 下拉刷新走的是同一份锚点快照，读过的条目不该复活
+                viewModel.refresh()
+                runCurrent()
+                assertTrue(viewModel.state.value.unreadKeys.isEmpty())
+            } finally { viewModel.viewModelScope.cancel() }
+        }
+
+    @Test
+    fun `load more failure exposes retry and bypasses the cooldown when tapped`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val initial = listOf(announcement("initial", "首页"))
+            var fetchCalls = 0
+            val viewModel = AnnouncementViewModel(
+                firstPageFlow = { flowOf(initial) },
+                fetchPage = {
+                    fetchCalls += 1
+                    error("教务网暂时不可用")
+                },
+            )
+            try {
+                runCurrent()
+                viewModel.loadMore()
+                runCurrent()
+                assertEquals(1, fetchCalls)
+                assertTrue(viewModel.state.value.loadMoreFailed)
+                assertFalse(viewModel.isLoadingMore.value)
+
+                // 冷却窗口内自动触发被挡住，不再打教务网
+                viewModel.loadMore()
+                runCurrent()
+                assertEquals(1, fetchCalls)
+
+                // footer 上显式点重试：绕过冷却，真的再请求一次
+                viewModel.retryLoadMore()
+                runCurrent()
+                assertEquals(2, fetchCalls)
+            } finally { viewModel.viewModelScope.cancel() }
+        }
+
+    private fun marker(uniqueKey: String, day: Int) =
+        AnnouncementReadMarker(uniqueKey, LocalDate.of(2026, 7, day))
+
     private fun delayedUncancellablePage(
         partial: List<Announcement>,
         release: CompletableDeferred<Unit>,
@@ -306,14 +457,40 @@ class AnnouncementViewModelTest {
         assertEquals(expected, (data as UiState.Success).data)
     }
 
+    /**
+     * 搜索空态的条数必须按「当前 chip 的范围」算：搜索是在 chip 范围内做的，
+     * 说「已加载 16 条」而当前分类其实只有 1 条，等于给了一个错的范围暗示。
+     */
+    @Test
+    fun filteredCount_followsChipAndIgnoresQuery() = runTest(mainDispatcherRule.testDispatcher) {
+        val all = listOf(
+            announcement(id = "1", title = "2026年秋季期中教学检查"),
+            announcement(id = "2", title = "2026年校级教改课题立项", type = AnnouncementType.BULLETIN),
+            announcement(id = "3", title = "数模竞赛获奖", type = AnnouncementType.PICTURE_NEWS),
+        )
+        val state = AnnouncementScreenState(
+            data = UiState.Success(all),
+            filter = AnnouncementFilter.PICTURE_NEWS,
+            searchQuery = "不存在的词",
+        )
+        assertEquals(1, state.filteredCount)
+        assertEquals(3, state.loadedCount)
+        assertEquals(emptyList<Announcement>(), state.visibleList)
+        assertEquals(
+            3,
+            state.copy(filter = AnnouncementFilter.ALL).filteredCount,
+        )
+    }
+
     private fun announcement(
         id: String,
         title: String,
         day: Int = 2,
+        type: AnnouncementType = AnnouncementType.NOTIFICATION,
     ) = Announcement(
         id = id,
         title = title,
         date = LocalDate.of(2026, 7, day),
-        type = AnnouncementType.NOTIFICATION,
+        type = type,
     )
 }

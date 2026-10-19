@@ -10,7 +10,11 @@ import cn.jxnu.nvzhuanban.ui.components.UiStateViewModel
 
 class AnnouncementDetailViewModel(
     val articleId: String,
-    private val repo: ArticleDetailRepository = ArticleDetailRepository.instance,
+    /**
+     * 正文抓取入口。默认走 [ArticleDetailRepository]；debug 预览页注入一份固定正文，
+     * 这样不登录取不到真数据时也能把阅读排版（进度条 / 表格 / 字号面板）拉到真机上看。
+     */
+    private val fetchDetail: suspend (String) -> ArticleDetail = { ArticleDetailRepository.instance.fetch(it) },
 ) : UiStateViewModel<ArticleDetail>() {
 
     init { load() }
@@ -23,7 +27,7 @@ class AnnouncementDetailViewModel(
         super.load()
     }
 
-    override suspend fun fetch(refresh: Boolean): ArticleDetail = repo.fetch(articleId)
+    override suspend fun fetch(refresh: Boolean): ArticleDetail = fetchDetail(articleId)
 
     companion object {
         private val VALID_ID = Regex("""\d+""")

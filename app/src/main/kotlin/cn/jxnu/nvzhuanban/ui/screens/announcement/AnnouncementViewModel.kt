@@ -7,6 +7,7 @@ import cn.jxnu.nvzhuanban.data.model.AnnouncementType
 import cn.jxnu.nvzhuanban.data.network.toUserMessage
 import cn.jxnu.nvzhuanban.data.repository.AnnouncementRepository
 import cn.jxnu.nvzhuanban.data.storage.AnnouncementReadAnchor
+import cn.jxnu.nvzhuanban.data.storage.AnnouncementReadMarker
 import cn.jxnu.nvzhuanban.ui.components.UiState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -29,10 +30,26 @@ data class AnnouncementScreenState(
     val searchQuery: String = "",
     /** 还有更多数据可加载；fetch 到空页时翻为 false。 */
     val hasMore: Boolean = true,
+    /**
+     * 本次打开列表以来自「上次已读位置」之后新增的条目 key（`type:id`）。
+     * 进入 tab 时按已读锚点算一次快照，用户点开某条后从集合里移除——
+     * 不会因为同一次加载结束写回锚点就瞬间全部消失。
+     */
+    val unreadKeys: Set<String> = emptySet(),
+    /** 最近一次「加载更多」失败（旧列表仍在展示），footer 给显式重试入口。 */
+    val loadMoreFailed: Boolean = false,
 ) {
-    /** 当前已加载（未过滤）的总条目数；给搜索为空时的空状态文案用。 */
+    /** 当前已加载（未过滤）的总条目数。 */
     val loadedCount: Int
         get() = (data as? UiState.Success)?.data?.size ?: 0
+
+    /**
+     * 当前类型 chip 过滤后、**尚未应用搜索词**的条目数。
+     * 搜索空态文案用它而不是 [loadedCount]：否则「图文」标签下明明只有 1 条，
+     * 空态却说「已加载 16 条」，和之前不给 chip 标条数的理由自相矛盾。
+     */
+    val filteredCount: Int
+        get() = byType.size
 
     /** 是否处于搜索态（trim 后非空）。 */
     val isSearching: Boolean
@@ -44,16 +61,21 @@ data class AnnouncementScreenState(
      */
     val visibleList: List<Announcement>
         get() {
+            val q = searchQuery.trim()
+            return if (q.isEmpty()) byType else byType.filter { it.title.contains(q, ignoreCase = true) }
+        }
+
+    /** 只按类型 chip 过滤后的列表，搜索词不参与。 */
+    private val byType: List<Announcement>
+        get() {
             val raw = (data as? UiState.Success)?.data ?: return emptyList()
-            val byType = when (filter) {
+            return when (filter) {
                 AnnouncementFilter.ALL -> raw
                 AnnouncementFilter.NOTIFICATION -> raw.filter { it.type == AnnouncementType.NOTIFICATION }
                 AnnouncementFilter.BULLETIN -> raw.filter { it.type == AnnouncementType.BULLETIN }
                 AnnouncementFilter.SHOWCASE -> raw.filter { it.type == AnnouncementType.SHOWCASE }
                 AnnouncementFilter.PICTURE_NEWS -> raw.filter { it.type == AnnouncementType.PICTURE_NEWS }
             }
-            val q = searchQuery.trim()
-            return if (q.isEmpty()) byType else byType.filter { it.title.contains(q, ignoreCase = true) }
         }
 }
 
@@ -63,6 +85,10 @@ class AnnouncementViewModel(
     },
     private val fetchPage: suspend (Int) -> List<Announcement> = {
         AnnouncementRepository.instance.fetchAll(page = it)
+    },
+    /** 已读锚点读取入口；测试注入用。null = 首次使用（或旧版本没有日期）→ 不标未读。 */
+    private val lastReadMarker: () -> AnnouncementReadMarker? = {
+        AnnouncementReadAnchor.current
     },
 ) : ViewModel() {
 
@@ -79,6 +105,10 @@ class AnnouncementViewModel(
     private val _refreshFailed = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val refreshFailed: SharedFlow<String> = _refreshFailed.asSharedFlow()
 
+    /** 加载更多失败的一次性提示（footer 同时给出重试按钮）。 */
+    private val _loadMoreError = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val loadMoreError: SharedFlow<String> = _loadMoreError.asSharedFlow()
+
     /** 当前已加载到的最后一页（从 1 开始）。下拉刷新时回到 1。 */
     private var currentPage: Int = 1
     /** 首页的 partial/full 与后续页分别保存，任一响应都不能覆盖另一部分。 */
@@ -92,6 +122,17 @@ class AnnouncementViewModel(
     /** 上一次 loadMore 失败的时间戳。短期冷却（5s）内不再自动重试，避免反复滚动刷屏式打教务网。 */
     private var lastLoadMoreFailureAt: Long = 0L
     private val loadMoreCooldownMs: Long = 5_000L
+
+    /**
+     * 本次进入列表时的已读锚点快照。
+     *
+     * 只在 `load()`（首次进入 / 错误重试）时取一次：加载终值会把锚点推进到新的顶部，
+     * 若每次 emit 都现读，未读集合会立刻被自己写掉的锚点清空。
+     * 下拉刷新**不**重新取快照——刷新期间到达的新条目仍然要能标成未读。
+     */
+    private var sessionAnchor: AnnouncementReadMarker? = null
+    /** 本次会话里用户点开过的条目；重算未读时排除，避免刷新后红点复活。 */
+    private val readKeys = mutableSetOf<String>()
 
     init { load() }
 
@@ -124,12 +165,25 @@ class AnnouncementViewModel(
         cancelLoadMore()
         _isRefreshing.value = refresh
         if (!refresh) {
+            // 新的一次「进入」：重新取锚点快照，并忘掉上一轮点开过的条目
+            sessionAnchor = lastReadMarker()
+            readKeys.clear()
             firstPageItems = emptyList()
             laterPageItems = emptyList()
             paginationExhausted = false
             currentPage = 1
             lastLoadMoreFailureAt = 0L
-            _state.value = _state.value.copy(data = UiState.Loading, hasMore = true)
+            _state.value = _state.value.copy(
+                data = UiState.Loading,
+                hasMore = true,
+                unreadKeys = emptySet(),
+                loadMoreFailed = false,
+            )
+        } else {
+            // 首次使用（load 时还没有任何锚点）的情况下刷新：首次加载已经把锚点写成
+            // 「上一轮看到的顶部」，这里补一次快照，刷新带来的更新条目才能标成未读。
+            if (sessionAnchor == null) sessionAnchor = lastReadMarker()
+            _state.value = _state.value.copy(loadMoreFailed = false)
         }
         firstPageJob = viewModelScope.launch {
             var sawAny = false
@@ -145,8 +199,8 @@ class AnnouncementViewModel(
                     }
                     sawAny = true
                     firstPageItems = list
-                    _state.value = _state.value.copy(
-                        data = UiState.Success(mergedPages()),
+                    publish(
+                        data = mergedPages(),
                         // 如果 partial 期间已翻到空页，full 到达不能重新开启分页。
                         hasMore = !paginationExhausted && (list.isNotEmpty() || laterPageItems.isNotEmpty()),
                     )
@@ -176,6 +230,40 @@ class AnnouncementViewModel(
             .distinctBy { it.uniqueKey }
             .sortedByDescending { it.date }
 
+    /** 统一出口：数据变了就顺手重算未读集合，避免各处 copy 漏写导致红点不动。 */
+    private fun publish(data: List<Announcement>, hasMore: Boolean) {
+        _state.value = _state.value.copy(
+            data = UiState.Success(data),
+            hasMore = hasMore,
+            unreadKeys = computeUnreadKeys(data),
+        )
+    }
+
+    /**
+     * 相对 [sessionAnchor] 推导未读条目。
+     *
+     * 按日期比较而不是「在列表里的下标」：partial 阶段图文还没回来，锚点可能整条不在列表里，
+     * 下标方案会把整页都误判成未读。规则：
+     *   - 日期晚于锚点 → 未读；
+     *   - 日期等于锚点 → 只有排在锚点前面（更新）的条目算未读；锚点本身与它后面的都算已读；
+     *   - 日期更早 → 已读。
+     * 用户点开过的条目在 [readKeys] 里，永不再标未读。
+     */
+    private fun computeUnreadKeys(list: List<Announcement>): Set<String> {
+        val anchor = sessionAnchor ?: return emptySet()
+        val anchorIndex = list.indexOfFirst { it.uniqueKey == anchor.uniqueKey }
+        val unread = LinkedHashSet<String>()
+        list.forEachIndexed { index, announcement ->
+            val isNewer = when {
+                announcement.date.isAfter(anchor.date) -> true
+                announcement.date == anchor.date -> anchorIndex >= 0 && index < anchorIndex
+                else -> false
+            }
+            if (isNewer && announcement.uniqueKey !in readKeys) unread += announcement.uniqueKey
+        }
+        return unread
+    }
+
     /**
      * 加载下一页。当前 data 是 Success 且 hasMore=true、无并发刷新/翻页即可；首页 partial
      * 展示后便允许分页，后续 full 到达只更新首页部分。
@@ -191,6 +279,7 @@ class AnnouncementViewModel(
 
         val requestId = ++loadMoreRequestId
         _isLoadingMore.value = true
+        _state.value = _state.value.copy(loadMoreFailed = false)
         loadMoreJob = viewModelScope.launch {
             try {
                 val nextPage = currentPage + 1
@@ -198,19 +287,21 @@ class AnnouncementViewModel(
                 if (requestId != loadMoreRequestId) return@launch
                 if (more.isEmpty()) {
                     paginationExhausted = true
-                    _state.value = _state.value.copy(hasMore = false)
+                    publish(data = mergedPages(), hasMore = false)
                 } else {
                     currentPage = nextPage
                     // 去重：教务网偶发两页之间数据回流；按 (type, id) 去重
                     laterPageItems = (laterPageItems + more).distinctBy { it.uniqueKey }
-                    _state.value = _state.value.copy(data = UiState.Success(mergedPages()))
+                    publish(data = mergedPages(), hasMore = !paginationExhausted)
                 }
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
-                // 加载更多失败：静默保留并打上冷却时间戳；用户继续滚动 5s 内不再自动重试，
-                // 避免一个失败的网络状况反复打教务网。
+                // 加载更多失败：静默保留旧列表 + 打上冷却时间戳；footer 转成「点击重试」，
+                // 用户继续滚动 5s 内不再自动重试，避免一个失败的网络状况反复打教务网。
                 if (requestId == loadMoreRequestId) {
                     lastLoadMoreFailureAt = System.currentTimeMillis()
+                    _state.value = _state.value.copy(loadMoreFailed = true)
+                    _loadMoreError.tryEmit(t.toUserMessage("加载更多失败"))
                 }
             } finally {
                 if (requestId == loadMoreRequestId) {
@@ -219,6 +310,12 @@ class AnnouncementViewModel(
                 }
             }
         }
+    }
+
+    /** footer 上的显式重试：绕过 5s 自动重试冷却（用户主动点了，就该真的再打一次）。 */
+    fun retryLoadMore() {
+        lastLoadMoreFailureAt = 0L
+        loadMore()
     }
 
     private fun cancelLoadMore() {
@@ -239,12 +336,19 @@ class AnnouncementViewModel(
         _state.value = _state.value.copy(searchQuery = q)
     }
 
+    /** 用户点开某条：立刻消掉它自己的未读点，并记住这次会话里已读过。 */
+    fun markItemRead(uniqueKey: String) {
+        if (uniqueKey !in _state.value.unreadKeys) return
+        readKeys += uniqueKey
+        _state.value = _state.value.copy(unreadKeys = _state.value.unreadKeys - uniqueKey)
+    }
+
     /**
      * 把当前列表「按日期降序后的第一条」记成已读锚点。
      * 仅在用户实际看到的「第 1 页终值（含图文）」可用时调用；
      * partial 阶段不写、loadMore 不写，避免红点逻辑被中间状态污染。
      */
     private fun markTopAsRead(list: List<Announcement>) {
-        list.firstOrNull()?.let { AnnouncementReadAnchor.setAnchor(it.uniqueKey) }
+        list.firstOrNull()?.let { AnnouncementReadAnchor.setAnchor(it.uniqueKey, it.date) }
     }
 }

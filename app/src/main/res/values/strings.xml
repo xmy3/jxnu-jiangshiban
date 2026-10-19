@@ -1,4 +1,4 @@
-﻿<resources>
+<resources>
     <string name="app_name">江师办</string>
 
     <!-- 底部导航 -->
@@ -51,7 +51,6 @@
 
     <!-- 开课查询（Public_Kkap 开课安排检索） -->
     <string name="course_offering_title">开课查询</string>
-    <string name="student_info_title">基本信息</string>
 
     <!-- 校历（教学周历索引） -->
     <string name="calendar_title">校历</string>
@@ -112,7 +111,30 @@
     <string name="announcement_search_hint">在标题中搜索</string>
     <string name="announcement_search_clear">清除搜索词</string>
     <string name="announcement_search_empty_template">已加载 %1$d 条，未找到「%2$s」</string>
+    <string name="announcement_search_empty_in_filter">当前分类已加载 %1$d 条，未找到「%2$s」</string>
+    <string name="announcement_search_in_all">在全部通知中搜索</string>
     <string name="announcement_search_load_more">加载更早的通知继续搜索</string>
+    <!-- 分类筛选 -->
+    <string name="announcement_filter_all">全部</string>
+    <string name="announcement_filter_notification">通知</string>
+    <string name="announcement_filter_bulletin">通告</string>
+    <string name="announcement_filter_showcase">风采</string>
+    <string name="announcement_filter_picture_news">图文</string>
+    <string name="announcement_filter_empty">当前分类暂无内容</string>
+    <!-- 时间分组（列表按天/周/月分段的吸顶标题） -->
+    <string name="announcement_group_today">今天</string>
+    <string name="announcement_group_yesterday">昨天</string>
+    <string name="announcement_group_this_week">本周</string>
+    <string name="announcement_group_month">%1$d月</string>
+    <string name="announcement_group_year_month">%1$d年%2$d月</string>
+    <string name="announcement_date">%1$d月%2$d日</string>
+    <string name="announcement_date_with_year">%1$d年%2$d月%3$d日</string>
+    <!-- 列表交互 -->
+    <string name="announcement_unread">未读</string>
+    <string name="announcement_back_to_top">回到顶部</string>
+    <string name="announcement_loading_more">加载中…</string>
+    <string name="announcement_load_more_retry">加载失败，点击重试</string>
+    <string name="announcement_no_more">—— 没有更多了 ——</string>
     <!-- 详情页：jwc 无会话时返回的"需要登录"占位页，引导走 app 内登录 -->
     <string name="announcement_login_required_title">登录后查看通知详情</string>
     <string name="announcement_login_required_desc">这条通知需要登录教务系统后才能查看完整内容</string>
@@ -127,6 +149,7 @@
     <string name="announcement_font_size_default">标准</string>
     <string name="announcement_font_size_large">大</string>
     <string name="announcement_font_size_xlarge">特大</string>
+    <string name="announcement_font_size_preview">各位老师、同学：现将本学期教学安排通知如下，请及时查看并相互转告。</string>
 
     <!-- 个人中心 -->
     <string name="profile_title">我的</string>
