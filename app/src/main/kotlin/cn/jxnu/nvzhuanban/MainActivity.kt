@@ -1,5 +1,6 @@
 package cn.jxnu.nvzhuanban
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import cn.jxnu.nvzhuanban.data.storage.ThemePrefs
+import cn.jxnu.nvzhuanban.ui.navigation.AlertNavigation
 import cn.jxnu.nvzhuanban.ui.navigation.AppNav
 import cn.jxnu.nvzhuanban.ui.theme.NvzhuanbanTheme
 import cn.jxnu.nvzhuanban.ui.widget.refreshTodayScheduleWidgets
@@ -21,6 +23,9 @@ class MainActivity : ComponentActivity() {
         // SplashScreen 必须在 super.onCreate 之前 install，否则 manifest 主题不被识别
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
+
+        // 从「出分 / 考试变更」通知点进来：先把目标路由存起来，等 AppNav 的 NavHost 就绪再跳
+        AlertNavigation.requestFrom(intent)
 
         // 等 Application 启动的会话恢复任务完成再放走 splash —— 但**最多等 [SPLASH_MAX_WAIT_MS]**。
         // 任务在 NvzhuanbanApp.onCreate 已经在 Dispatchers.IO 里启动；
@@ -56,6 +61,16 @@ class MainActivity : ComponentActivity() {
         // 「打开 App 再回桌面」时不该还看到上一节课的高亮。重绘同时会按当前的
         // 「闹钟与提醒」权限状态重排唤醒槽。没添加过 widget 时内部直接返回。
         lifecycleScope.launch { refreshTodayScheduleWidgets(this@MainActivity) }
+    }
+
+    /**
+     * App 已经开着时点通知：manifest 里 MainActivity 是 `singleTop`，走这里而不是新建实例，
+     * 否则点一次通知就在回退栈上多一层，返回要按两次才退出。
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        AlertNavigation.requestFrom(intent)
     }
 
     private companion object {

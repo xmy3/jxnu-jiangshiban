@@ -7,6 +7,7 @@ import cn.jxnu.nvzhuanban.data.repository.AnnouncementRepository
 import cn.jxnu.nvzhuanban.data.repository.AuthRepository
 import cn.jxnu.nvzhuanban.data.repository.UpdateRepository
 import cn.jxnu.nvzhuanban.data.storage.AnnouncementReadAnchor
+import cn.jxnu.nvzhuanban.data.storage.AlertPrefs
 import cn.jxnu.nvzhuanban.data.storage.AvatarPrefs
 import cn.jxnu.nvzhuanban.data.storage.CourseOverridesStore
 import cn.jxnu.nvzhuanban.data.storage.EveningStudyStore
@@ -14,6 +15,7 @@ import cn.jxnu.nvzhuanban.data.storage.PeopleSearchHistoryStore
 import cn.jxnu.nvzhuanban.data.storage.ScheduleHeightPrefs
 import cn.jxnu.nvzhuanban.data.storage.ThemePrefs
 import cn.jxnu.nvzhuanban.data.storage.UpdatePrefs
+import cn.jxnu.nvzhuanban.data.work.AlertScheduler
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -53,6 +55,7 @@ class NvzhuanbanApp : Application() {
         PeopleSearchHistoryStore.init(this)
         AnnouncementReadAnchor.init(this)
         UpdatePrefs.init(this)
+        AlertPrefs.init(this)
         val auth = AuthRepository.init(this)
         val deferred = CompletableDeferred<Boolean>()
         sessionRestore = deferred
@@ -60,6 +63,12 @@ class NvzhuanbanApp : Application() {
         appScope.launch {
             val ok = runCatching { auth.tryRestoreSession() }.getOrDefault(false)
             deferred.complete(ok)
+            // 出分 / 考试变更的后台检查跟着登录态走：没登录就取消，避免每 4 小时把进程叫起来
+            // 做一次注定失败的检查（那还会连带跑一遍本 onCreate 的预热请求）。
+            runCatching {
+                if (ok) AlertScheduler.sync(this@NvzhuanbanApp)
+                else AlertScheduler.cancel(this@NvzhuanbanApp)
+            }
         }
 
         // 通知页是公开页（无需登录），可以与登录态恢复并发跑。
@@ -116,6 +125,7 @@ class NvzhuanbanApp : Application() {
             "people_search_history",   // PeopleSearchHistoryStore
             "announcement_read_prefs", // AnnouncementReadAnchor
             "update_prefs",            // UpdatePrefs
+            "alert_prefs",             // AlertPrefs（出分 / 考试变更提醒）
             "jxnu_auth",               // AuthStorage（AuthRepository.init 内首读）
         )
     }

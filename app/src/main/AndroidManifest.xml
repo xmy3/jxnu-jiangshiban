@@ -19,6 +19,10 @@
     <!-- 重启后立刻重排 widget 唤醒链，而不是干等系统的 30 分钟周期刷新。 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- 出分 / 考试变更提醒（详见 data/work/GradeExamWatchWorker）。targetSdk 33+ 起是运行时
+         权限，默认不授予；未授予时开关会走「申请 → 被拒则保持关闭」的路径，后台任务本身不崩。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- Android 11+ package visibility：校历文档 / 公告「在浏览器中打开」
          都需要系统能 resolve 到处理 http(s) VIEW 的浏览器。queries 里必须显式声明
          BROWSABLE category —— 浏览器（Chrome / 系统浏览器）的 intent-filter 都带
@@ -55,10 +59,13 @@
         android:theme="@style/Theme.Nvzhuanban"
         tools:targetApi="34">
 
+        <!-- launchMode=singleTop：通知点进来时走 onNewIntent，不再叠一个新的 Activity 实例
+             （否则点一次通知 = 多一层回退栈，返回要按两次才退出）。 -->
         <activity
             android:name=".MainActivity"
             tools:ignore="Instantiatable"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.Nvzhuanban.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -98,6 +105,24 @@
         <receiver
             android:name=".ui.widget.WidgetPinResultReceiver"
             android:exported="false" />
+
+        <!-- 考前一天提醒的闹钟接收器（详见 data/work/ExamReminderReceiver）。两条职责：
+             ① ACTION_FIRE 是 ExamReminderScheduler 自己排的定点闹钟，到点发通知；
+             ② 其余是系统广播 —— 重启 / 改时间 / 换时区 / 覆盖安装都会让已排的闹钟失效，
+                收到就按 ExamReminderStore 的存档把闹钟重排一遍（否则重启一次，第二天的
+                考试提醒就没了）。SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED 是用户在
+                系统里刚授权「闹钟与提醒」，那一刻立刻从 inexact 升到 exact。 -->
+        <receiver
+            android:name=".data.work.ExamReminderReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

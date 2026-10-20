@@ -13,11 +13,14 @@ import cn.jxnu.nvzhuanban.data.network.ReauthOutcome
 import cn.jxnu.nvzhuanban.data.network.SecureCredentialStore
 import cn.jxnu.nvzhuanban.data.network.pages.UserDefaultPage
 import cn.jxnu.nvzhuanban.data.storage.AnnouncementReadAnchor
+import cn.jxnu.nvzhuanban.data.storage.AlertPrefs
 import cn.jxnu.nvzhuanban.data.storage.AvatarPrefs
 import cn.jxnu.nvzhuanban.data.storage.CourseOverridesStore
 import cn.jxnu.nvzhuanban.data.storage.EveningStudyStore
 import cn.jxnu.nvzhuanban.data.storage.PeopleSearchHistoryStore
 import cn.jxnu.nvzhuanban.data.widget.WidgetSnapshotStore
+import cn.jxnu.nvzhuanban.data.work.AlertScheduler
+import cn.jxnu.nvzhuanban.data.work.ExamReminderScheduler
 import cn.jxnu.nvzhuanban.ui.components.clearDecodedImageCache
 import cn.jxnu.nvzhuanban.ui.widget.TodayScheduleWidget
 import cn.jxnu.nvzhuanban.ui.widget.WidgetUpdateScheduler
@@ -152,6 +155,11 @@ class AuthRepository private constructor(
             }
         }
         WidgetSnapshotStore.resumeWrites()
+        // 登录成功后重排后台检查：登出时任务被取消了，同一进程内再登录必须重新入队，
+        // 否则用户要冷启一次 App 才恢复提醒。WorkManager 首次 getInstance 会开库，切 IO。
+        // runNow：刚拿到有效会话，立刻补跑一次 —— 否则「考前一天提醒」要等下一次周期唤醒
+        // （最多 4 小时）才排闹钟，考前那晚才登录的学生就错过了。
+        withContext(Dispatchers.IO) { runCatching { AlertScheduler.sync(appContext, runNow = true) } }
         val profile = runCatching { UserDefaultPage.fetchAndParse(username) }
             .getOrNull()
             ?: UserDefaultPage.parse(username, "")
@@ -354,6 +362,10 @@ class AuthRepository private constructor(
      *  - 通知已读锚点（AnnouncementReadAnchor）—— 否则下一用户继承上一用户的"最后已读"
      *  - 桌面 widget snapshot 文件 —— 否则锁屏小部件还在显示上一用户的今日课表
      *  - 图片缓存（内存解码位图 + OkHttp 磁盘缓存）—— 否则上一用户的头像 / 师生照片跨账号残留
+     *  - 出分 / 考试变更的已知指纹与后台任务（AlertPrefs / AlertScheduler）—— 否则上一账号的
+     *    成绩基线会把新账号的第一批成绩判成"没有变化"，且后台每 4 小时白跑一次
+     *  - 考前一天提醒的闹钟与存档（ExamReminderScheduler / ExamReminderStore）—— 否则新账号
+     *    会收到上一账号的"明天考高数"，而那条通知里还写着别人的考场
      *
      * 注意：调用方已持有 [authMutex]，这里串行执行即可，不会和并发的 login 抢锁。
      */
@@ -364,6 +376,10 @@ class AuthRepository private constructor(
         PeopleSearchHistoryStore.clearAll()
         AnnouncementReadAnchor.clear()
         clearWidgetSnapshotOnSignOut()
+        // 开关本身是设备级偏好（不清），但指纹/基线属于上一账号，必须清
+        AlertPrefs.clearKnown()
+        AlertScheduler.cancel(appContext)
+        ExamReminderScheduler.cancelAll(appContext)
         clearDecodedImageCache()
         JxnuHttpClient.get().clearHttpCache()
     }

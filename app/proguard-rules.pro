@@ -68,6 +68,14 @@
 # 默认无需 keep。widget 的 ScheduleSnapshot 走手写 JSONObject（字段名是字符串字面量），
 # R8 名字混淆不影响它，故也不必 keep。
 
+# ── WorkManager ───────────────────────────────────────────
+# WorkManager 用 Class.forName(workerClassName) 反射重建 Worker，类名存在它自己的数据库里。
+# R8 看不见这条反射链，不加规则会把 GradeExamWatchWorker 改名/裁掉 —— 表现是任务静默消失
+# （WorkManager 日志里是 "Could not instantiate ..."），而且只在 release 包复现。
+-keep class * extends androidx.work.ListenableWorker {
+    <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+
 # ── 其它常见 R8 噪声 ─────────────────────────────────────
 -dontwarn java.lang.invoke.StringConcatFactory
 -dontwarn javax.annotation.**

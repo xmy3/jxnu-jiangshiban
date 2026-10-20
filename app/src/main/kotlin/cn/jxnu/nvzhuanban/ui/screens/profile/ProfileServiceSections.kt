@@ -16,16 +16,19 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.ListAlt
 import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.ColorLens
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.MeetingRoom
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.PeopleOutline
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.SystemUpdate
@@ -34,6 +37,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
@@ -117,6 +121,16 @@ internal fun ProfileSettingsSection(
     latestRelease: AppRelease?,
     /** Android 12+ 且没给「闹钟与提醒」权限时为 true —— 只有这时才显示准点刷新入口。 */
     showExactAlarmEntry: Boolean,
+    /** 出分 / 考试变更提醒的总开关。 */
+    alertEnabled: Boolean,
+    /** 提醒状态的副标题（「上次检查 2 小时前」之类），由调用方算好传入。 */
+    alertSubtitle: String,
+    onAlertToggle: (Boolean) -> Unit,
+    /** 考前一天提醒的总开关（定点闹钟，不是轮询）。 */
+    examReminderEnabled: Boolean,
+    /** 考前一天提醒的副标题。 */
+    examReminderSubtitle: String,
+    onExamReminderToggle: (Boolean) -> Unit,
     onOpenTheme: () -> Unit,
     onAddWidgetClick: () -> Unit,
     onExactAlarmClick: () -> Unit,
@@ -148,6 +162,25 @@ internal fun ProfileSettingsSection(
                     Spacer(Modifier.width(8.dp))
                     ProfileRowChevron()
                 },
+            )
+            ProfileSectionDivider()
+            // 出分 / 考试变更提醒：本地周期轮询 + 通知，没有服务端推送（说明写在副标题里）
+            ProfileSwitchRow(
+                icon = Icons.Outlined.NotificationsActive,
+                title = "成绩与考试提醒",
+                subtitle = alertSubtitle,
+                checked = alertEnabled,
+                onCheckedChange = onAlertToggle,
+            )
+            ProfileSectionDivider()
+            // 考前一天提醒：不轮询，靠 AlarmManager 在考试前一晚 20:00 定点响。
+            // 它和上面那行的区别是「有截止时间」—— 早八的考试，当天早上再提醒就晚了。
+            ProfileSwitchRow(
+                icon = Icons.Outlined.Alarm,
+                title = "考前一天提醒",
+                subtitle = examReminderSubtitle,
+                checked = examReminderEnabled,
+                onCheckedChange = onExamReminderToggle,
             )
             ProfileSectionDivider()
             ProfileServiceRow(
@@ -279,6 +312,43 @@ private fun ProfileServiceRow(
         }
         Spacer(Modifier.width(12.dp))
         trailing()
+    }
+}
+
+@Composable
+private fun ProfileSwitchRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            // 整行可点：Switch 的 onCheckedChange 置 null，只做视觉指示，避免和整行形成两个焦点
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 

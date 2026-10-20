@@ -1,6 +1,10 @@
 package cn.jxnu.nvzhuanban.ui.screens.profile
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -96,6 +100,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -107,12 +112,18 @@ import cn.jxnu.nvzhuanban.data.model.UserProfile
 import cn.jxnu.nvzhuanban.data.model.earnedCreditsOf
 import cn.jxnu.nvzhuanban.data.model.formatCredit
 import cn.jxnu.nvzhuanban.data.model.graduationProgressPercent
+import cn.jxnu.nvzhuanban.data.model.ExamReminderPlan
 import cn.jxnu.nvzhuanban.data.repository.ExamRepository
 import cn.jxnu.nvzhuanban.data.repository.GraduationAuditRepository
 import cn.jxnu.nvzhuanban.data.repository.MakeupExamRepository
 import cn.jxnu.nvzhuanban.data.storage.AvatarPrefs
+import cn.jxnu.nvzhuanban.data.storage.AlertCheckResult
+import cn.jxnu.nvzhuanban.data.storage.AlertPrefs
 import cn.jxnu.nvzhuanban.data.storage.ThemeMode
 import cn.jxnu.nvzhuanban.data.storage.ThemePrefs
+import cn.jxnu.nvzhuanban.data.work.AlertNotifier
+import cn.jxnu.nvzhuanban.data.work.AlertScheduler
+import cn.jxnu.nvzhuanban.data.work.ExamReminderScheduler
 import cn.jxnu.nvzhuanban.ui.components.RefreshIconButton
 import cn.jxnu.nvzhuanban.ui.components.RemoteJwcImage
 import cn.jxnu.nvzhuanban.ui.components.StateScaffold
@@ -220,6 +231,12 @@ internal fun ProfileLightweightListPreview() {
                     ProfileSettingsSection(
                         versionName = versionName, latestRelease = null,
                         showExactAlarmEntry = true,
+                        alertEnabled = false,
+                        alertSubtitle = "未开启：出分和考试变动需要手动刷新",
+                        onAlertToggle = { showSampleNotice() },
+                        examReminderEnabled = false,
+                        examReminderSubtitle = "未开启：不会提醒第二天的考试",
+                        onExamReminderToggle = { showSampleNotice() },
                         onOpenTheme = { showThemeDialog = true }, onAddWidgetClick = showSampleNotice,
                         onExactAlarmClick = showSampleNotice,
                         onAboutClick = { showAboutDialog = true }, onCheckUpdate = showSampleNotice,
@@ -275,10 +292,80 @@ fun ProfileScreen(
     val themeMode by ThemePrefs.themeMode.collectAsState()
     val dynamicColor by ThemePrefs.dynamicColor.collectAsState()
     val showAvatar by AvatarPrefs.showAvatar.collectAsState()
+    val alertEnabled by AlertPrefs.enabled.collectAsState()
+    val alertLastCheckAt by AlertPrefs.lastCheckAt.collectAsState()
+    val alertLastResult by AlertPrefs.lastResult.collectAsState()
+    val examReminderEnabled by AlertPrefs.examReminderEnabled.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    fun enableAlerts() {
+        AlertPrefs.setEnabled(true)
+        // runNow：立刻补跑一次，否则新出分要等周期任务下一次唤醒（最多 4 小时）才提醒
+        AlertScheduler.sync(context, runNow = true)
+    }
+
+    fun enableExamReminders() {
+        AlertPrefs.setExamReminderEnabled(true)
+        // 考前一天提醒复用同一个后台任务：得先拉到考试数据，才知道该排哪天的闹钟。
+        // 同样要立刻补跑 —— 学生常常是考前那晚才想起打开它。
+        AlertScheduler.sync(context, runNow = true)
+    }
+
+    fun disableExamReminders() {
+        AlertPrefs.setExamReminderEnabled(false)
+        // 先撤掉已排的闹钟，再决定后台任务去留（另一个开关可能还开着）
+        ExamReminderScheduler.cancelAll(context)
+        AlertScheduler.sync(context)
+    }
+
+    /**
+     * 两个提醒开关共用的前置：**通知发不出去就不把开关置为开**。
+     * 让用户看到「已开启」却永远收不到提醒，比不给这个开关更糟。
+     */
+    fun enableOnlyIfNotificationsWork(
+        enable: () -> Unit,
+        requestPermission: () -> Unit,
+    ) {
+        if (AlertNotifier.areAlertsAllowed(context)) {
+            enable()
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // 权限还没问过（或被拒过）：先申请，授予后才真正打开开关
+            requestPermission()
+            return
+        }
+        // 有权限但系统总开关被关了：申请也弹不出来，只能引导去设置
+        scope.launch { snackbarHostState.showSnackbar(NOTIFICATIONS_BLOCKED_HINT) }
+    }
+
+    val alertPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            enableAlerts()
+        } else {
+            scope.launch { snackbarHostState.showSnackbar(NOTIFICATIONS_DENIED_HINT) }
+        }
+    }
+
+    val examReminderPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            enableExamReminders()
+        } else {
+            scope.launch { snackbarHostState.showSnackbar(NOTIFICATIONS_DENIED_HINT) }
+        }
+    }
 
     // 小组件「准点刷新」依赖系统特殊权限「闹钟与提醒」。用户在系统设置里授予/收回后没有
     // 回调进 Compose，所以每次回到前台重新读一次；刚授予时立刻重绘一次 widget，
@@ -379,6 +466,36 @@ fun ProfileScreen(
                         versionName = versionName,
                         latestRelease = latestRelease,
                         showExactAlarmEntry = exactAlarmState == WidgetExactAlarmState.Missing,
+                        alertEnabled = alertEnabled,
+                        alertSubtitle = alertSubtitle(alertEnabled, alertLastCheckAt, alertLastResult),
+                        onAlertToggle = { want ->
+                            if (!want) {
+                                AlertPrefs.setEnabled(false)
+                                AlertScheduler.sync(context)
+                            } else {
+                                enableOnlyIfNotificationsWork(
+                                    enable = ::enableAlerts,
+                                    requestPermission = {
+                                        alertPermissionLauncher.launch(POST_NOTIFICATIONS_PERMISSION)
+                                    },
+                                )
+                            }
+                        },
+                        examReminderEnabled = examReminderEnabled,
+                        examReminderSubtitle = examReminderSubtitle(examReminderEnabled),
+                        onExamReminderToggle = { want ->
+                            if (!want) {
+                                disableExamReminders()
+                            } else {
+                                enableOnlyIfNotificationsWork(
+                                    enable = ::enableExamReminders,
+                                    requestPermission = {
+                                        examReminderPermissionLauncher
+                                            .launch(POST_NOTIFICATIONS_PERMISSION)
+                                    },
+                                )
+                            }
+                        },
                         onOpenTheme = { showThemeDialog = true },
                         onAddWidgetClick = { showWidgetDialog = true },
                         onExactAlarmClick = {
@@ -765,6 +882,66 @@ private fun PrivacySection(title: String, body: String) {
         )
     }
 }
+
+/**
+ * 「成绩与考试提醒」的副标题。
+ *
+ * 刻意把「上次检查」写出来：这是个本地轮询、不是推送，用户需要知道它到底跑没跑、什么时候
+ * 跑的，而不是面对一个永远亮着、不知道有没有用的开关。
+ */
+private fun alertSubtitle(
+    enabled: Boolean,
+    lastCheckAt: Long,
+    result: AlertCheckResult,
+): String {
+    if (!enabled) return "未开启：出分和考试变动需要手动刷新"
+    if (lastCheckAt <= 0L) return "已开启：等待首次后台检查"
+    val ago = relativeAgo(lastCheckAt)
+    return when (result) {
+        AlertCheckResult.OK -> "每 ${AlertScheduler.INTERVAL_HOURS} 小时检查一次 · 上次 $ago"
+        AlertCheckResult.OFFLINE -> "上次检查没连上网络（$ago）"
+        AlertCheckResult.LOGIN_REQUIRED -> "上次检查未登录，登录后自动恢复（$ago）"
+        AlertCheckResult.NEVER -> "已开启：等待首次后台检查"
+    }
+}
+
+private fun relativeAgo(epochMs: Long): String {
+    val minutes = ((System.currentTimeMillis() - epochMs) / 60_000L).coerceAtLeast(0L)
+    return when {
+        minutes < 1 -> "刚刚"
+        minutes < 60 -> "$minutes 分钟前"
+        minutes < 24 * 60 -> "${minutes / 60} 小时前"
+        else -> "${minutes / (24 * 60)} 天前"
+    }
+}
+
+/**
+ * 考前一天提醒的副标题。
+ *
+ * 这里不显示「上次检查」—— 提醒是前一夜定点响的，说「每 4 小时检查」会让用户以为它随时会响。
+ * 一定要带上「教务公布后」这个前提：考试安排没发布时，这个开关确实是静默的。
+ */
+private fun examReminderSubtitle(enabled: Boolean): String =
+    if (enabled) {
+        "教务公布后，考前一天 ${ExamReminderPlan.REMINDER_TIME} 提醒考场与座位"
+    } else {
+        "未开启：不会提醒第二天的考试"
+    }
+
+private const val NOTIFICATIONS_DENIED_HINT =
+    "没有通知权限，提醒无法弹出；可在系统设置里为江师办打开通知"
+
+private const val NOTIFICATIONS_BLOCKED_HINT =
+    "系统通知已关闭，请在系统设置中为江师办打开通知"
+
+/**
+ * `Manifest.permission.POST_NOTIFICATIONS` 的字符串值。
+ *
+ * 为什么要抄一份：这两个开关都把权限名作为参数传给 `RequestPermission().launch(...)` 的 lambda，
+ * lint 只认「字面量位于 `SDK_INT >= 33` 分支内」的写法，否则报 `InlinedApi`（minSdk 26）。
+ * 该字段本来就是编译期内联的常量，取同值字符串在任何 API 上都安全。
+ */
+private const val POST_NOTIFICATIONS_PERMISSION = "android.permission.POST_NOTIFICATIONS"
 
 private val ThemeMode.label: String
     get() = when (this) {
