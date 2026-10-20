@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.ListAlt
 import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.ColorLens
 import androidx.compose.material.icons.outlined.Info
@@ -114,8 +115,11 @@ internal fun ProfileToolsSection(
 internal fun ProfileSettingsSection(
     versionName: String,
     latestRelease: AppRelease?,
+    /** Android 12+ 且没给「闹钟与提醒」权限时为 true —— 只有这时才显示准点刷新入口。 */
+    showExactAlarmEntry: Boolean,
     onOpenTheme: () -> Unit,
     onAddWidgetClick: () -> Unit,
+    onExactAlarmClick: () -> Unit,
     onAboutClick: () -> Unit,
     onCheckUpdate: () -> Unit,
     onLogoutClick: () -> Unit,
@@ -152,6 +156,18 @@ internal fun ProfileSettingsSection(
                 subtitle = "将今日课表放到手机桌面",
                 onClick = onAddWidgetClick,
             )
+            // 只在缺权限时出现：widget 靠精确闹钟在上下课那一刻重绘，没有权限时系统会合并推迟，
+            // 表现为「都上课十分钟了还显示下一节」。授予后本行自动消失（进入页面时重新读权限态）。
+            if (showExactAlarmEntry) {
+                ProfileSectionDivider()
+                ProfileServiceRow(
+                    icon = Icons.Outlined.Bolt,
+                    title = "小组件准点刷新",
+                    subtitle = "未开启：上下课切换可能延迟几分钟",
+                    iconTint = serviceAccent,
+                    onClick = onExactAlarmClick,
+                )
+            }
             ProfileSectionDivider()
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
                 ProfileSupportAction(

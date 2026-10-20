@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import cn.jxnu.nvzhuanban.data.storage.ThemePrefs
 import cn.jxnu.nvzhuanban.ui.navigation.AppNav
 import cn.jxnu.nvzhuanban.ui.theme.NvzhuanbanTheme
+import cn.jxnu.nvzhuanban.ui.widget.refreshTodayScheduleWidgets
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -50,6 +51,11 @@ class MainActivity : ComponentActivity() {
                 AppNav()
             }
         }
+
+        // 冷启动顺手重绘一次桌面小组件：国产 ROM 常把后台闹钟广播整个吞掉，用户
+        // 「打开 App 再回桌面」时不该还看到上一节课的高亮。重绘同时会按当前的
+        // 「闹钟与提醒」权限状态重排唤醒槽。没添加过 widget 时内部直接返回。
+        lifecycleScope.launch { refreshTodayScheduleWidgets(this@MainActivity) }
     }
 
     private companion object {

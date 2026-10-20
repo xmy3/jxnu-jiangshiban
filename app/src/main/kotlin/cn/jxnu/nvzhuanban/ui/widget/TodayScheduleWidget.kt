@@ -51,10 +51,11 @@ import java.time.temporal.ChronoUnit
  * snapshot 不变也能正确切日、推进"下一节"高亮（前提是同一学期）。
  *
  * 刷新触发（详见 [WidgetUpdateScheduler] 和 [TodayScheduleWidgetReceiver]）：
- *  - 每次渲染结束自我注册下一节切换 / 跨日 alarm（inexact，不要权限）
- *  - 系统 ACTION_DATE_CHANGED / TIMEZONE_CHANGED / TIME_SET 兜底
+ *  - 每次渲染结束自我注册下一节切换 / 跨日 alarm（有「闹钟与提醒」权限时用精确闹钟，
+ *    否则退化到 inexact + 一个迟到兜底槽）
+ *  - 系统 ACTION_DATE_CHANGED / TIMEZONE_CHANGED / TIME_SET / BOOT_COMPLETED 兜底
  *  - widget xml 里 updatePeriodMillis=1800000（30 分钟）二级兜底
- *  - App 在课表数据更新后主动 updateAll
+ *  - App 在课表数据更新后 / 冷启动时主动 updateAll
  *
  * 点击 widget 任意位置直接打开 App 主页。
  */
@@ -78,9 +79,9 @@ class TodayScheduleWidget : GlanceAppWidget() {
         val weekday = today.dayOfWeek.value
 
         // 给自己排下一次唤醒（节次切换 / 跨日）。无 widget 实例时 PendingIntent 还在但不会重绘。
-        // runCatching：MIUI / HyperOS 等定制 ROM 在后台严苛模式下偶尔会让
-        // setAndAllowWhileIdle 抛 SecurityException —— 不能让一次 alarm 失败传染到 provideContent，
-        // 否则用户看到的是 "Can't show content"，而本来应该至少看到一次"今天的课"。
+        // runCatching：MIUI / HyperOS 等定制 ROM 在后台严苛模式下偶尔会让闹钟抛 SecurityException ——
+        // 不能让一次 alarm 失败传染到 provideContent，否则用户看到的是 "Can't show content"，
+        // 而本来应该至少看到一次"今天的课"。
         runCatching {
             WidgetUpdateScheduler.scheduleNext(context.applicationContext, today, nowMins, courses)
         }

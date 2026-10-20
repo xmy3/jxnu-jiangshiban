@@ -3,8 +3,6 @@ package cn.jxnu.nvzhuanban.ui.screens.schedule
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.glance.appwidget.GlanceAppWidgetManager
-import androidx.glance.appwidget.updateAll
 import cn.jxnu.nvzhuanban.data.model.AuthState
 import cn.jxnu.nvzhuanban.data.model.Course
 import cn.jxnu.nvzhuanban.data.model.EveningStudy
@@ -17,7 +15,7 @@ import cn.jxnu.nvzhuanban.data.storage.EveningStudyStore
 import cn.jxnu.nvzhuanban.data.widget.ScheduleSnapshot
 import cn.jxnu.nvzhuanban.data.widget.WidgetSnapshotStore
 import cn.jxnu.nvzhuanban.ui.components.UiState
-import cn.jxnu.nvzhuanban.ui.widget.TodayScheduleWidget
+import cn.jxnu.nvzhuanban.ui.widget.refreshTodayScheduleWidgets
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -621,13 +619,8 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         val snapshotGeneration = WidgetSnapshotStore.generation()
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             WidgetSnapshotStore.save(ctx, snap, snapshotGeneration)
-            runCatching {
-                // 只通知已经被用户添加到桌面的 widget，避免没有 widget 时报错
-                val mgr = GlanceAppWidgetManager(ctx)
-                if (mgr.getGlanceIds(TodayScheduleWidget::class.java).isNotEmpty()) {
-                    TodayScheduleWidget().updateAll(ctx)
-                }
-            }
+            // 只通知已经被用户添加到桌面的 widget，避免没有 widget 时报错
+            refreshTodayScheduleWidgets(ctx)
         }
     }
 }

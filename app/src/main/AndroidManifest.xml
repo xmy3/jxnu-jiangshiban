@@ -5,6 +5,20 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- 桌面小组件要「到点就换高亮」（上下课那一刻重绘），必须用精确闹钟。
+         inexact 闹钟会被系统合并推迟，Doze 下同一 App 大约 9 分钟才放行一次，
+         用户看到的就是"上课十分钟了还显示下一节"。
+         Android 12+ 该权限是「特殊应用权限」（系统设置里的「闹钟与提醒」），
+         Android 14+ 默认不授予 —— App 内「我的 → 小组件准点刷新」负责引导；
+         没授予时 WidgetUpdateScheduler 自动退回 setAndAllowWhileIdle + 兜底槽，不会崩。
+         lint 的 ProtectedPermissions 是误报：这是普通 app 可申请的 appop 类权限
+         （Play 上只需填表声明，用户可在系统设置里随时开关），不是 signature 权限。 -->
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        tools:ignore="ProtectedPermissions" />
+    <!-- 重启后立刻重排 widget 唤醒链，而不是干等系统的 30 分钟周期刷新。 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Android 11+ package visibility：校历文档 / 公告「在浏览器中打开」
          都需要系统能 resolve 到处理 http(s) VIEW 的浏览器。queries 里必须显式声明
          BROWSABLE category —— 浏览器（Chrome / 系统浏览器）的 intent-filter 都带
@@ -53,8 +67,9 @@
         </activity>
 
         <!-- 桌面小部件：今日课表 + 下一节倒计时 -->
-        <!-- 除标准 APPWIDGET_UPDATE 外，还监听几类系统时间 / 日期 / 语言变化广播，
-             触发 widget 实时重绘（详见 TodayScheduleWidgetReceiver）；
+        <!-- 除标准 APPWIDGET_UPDATE 外，还监听几类系统时间 / 日期 / 语言变化广播、
+             开机完成、精确闹钟权限授予，触发 widget 实时重绘
+             （详见 TodayScheduleWidgetReceiver）；
              ACTION_TICK 是 WidgetUpdateScheduler 自家排的 AlarmManager 唤醒。 -->
         <receiver
             android:name=".ui.widget.TodayScheduleWidgetReceiver"
@@ -68,6 +83,8 @@
                 <action android:name="android.intent.action.TIME_SET" />
                 <action android:name="android.intent.action.LOCALE_CHANGED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
                 <action android:name="cn.jxnu.nvzhuanban.widget.action.TICK" />
             </intent-filter>
             <meta-data

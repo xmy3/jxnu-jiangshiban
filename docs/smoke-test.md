@@ -54,4 +54,6 @@ If connected tests are skipped because no device is available, record that in th
 1. Add 今日课表 widget to the launcher.
 2. Open the app and load schedule successfully.
 3. Return to launcher and confirm today's courses or the empty state render.
-4. Change system time across a course boundary if practical; confirm widget refreshes.
+4. On Android 12+, open 我的 and confirm「小组件准点刷新」appears while「闹钟与提醒」is off; tap it, grant the permission, come back — the row must disappear and the widget repaint immediately.
+5. Change system time across a course boundary if practical; confirm the widget flips「进行中 / 下一节」within a minute (with the exact-alarm grant) instead of several minutes later.
+6. Reboot the phone and confirm the widget repaints without opening the app (boot receiver re-arms the alarm chain).

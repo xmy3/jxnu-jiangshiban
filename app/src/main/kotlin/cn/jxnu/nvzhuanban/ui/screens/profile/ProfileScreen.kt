@@ -67,6 +67,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -95,6 +96,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cn.jxnu.nvzhuanban.R
@@ -117,11 +120,15 @@ import cn.jxnu.nvzhuanban.ui.screens.announcement.openExternalHttpUrl
 import cn.jxnu.nvzhuanban.ui.screens.calendar.rememberCalendarDate
 import cn.jxnu.nvzhuanban.ui.theme.AppShape
 import cn.jxnu.nvzhuanban.ui.theme.NvzhuanbanTheme
+import cn.jxnu.nvzhuanban.ui.widget.WidgetExactAlarmState
 import cn.jxnu.nvzhuanban.ui.widget.WidgetPinResultReceiver
 import cn.jxnu.nvzhuanban.ui.widget.isPinTodayScheduleWidgetSupported
 import cn.jxnu.nvzhuanban.ui.widget.openShortcutPermissionSettings
+import cn.jxnu.nvzhuanban.ui.widget.openWidgetExactAlarmSettings
 import cn.jxnu.nvzhuanban.ui.widget.pinnedTodayScheduleWidgetCount
+import cn.jxnu.nvzhuanban.ui.widget.refreshTodayScheduleWidgets
 import cn.jxnu.nvzhuanban.ui.widget.requestPinTodayScheduleWidget
+import cn.jxnu.nvzhuanban.ui.widget.widgetExactAlarmState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -212,7 +219,9 @@ internal fun ProfileLightweightListPreview() {
                 item {
                     ProfileSettingsSection(
                         versionName = versionName, latestRelease = null,
+                        showExactAlarmEntry = true,
                         onOpenTheme = { showThemeDialog = true }, onAddWidgetClick = showSampleNotice,
+                        onExactAlarmClick = showSampleNotice,
                         onAboutClick = { showAboutDialog = true }, onCheckUpdate = showSampleNotice,
                         onLogoutClick = showSampleNotice,
                     )
@@ -269,6 +278,20 @@ fun ProfileScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // 小组件「准点刷新」依赖系统特殊权限「闹钟与提醒」。用户在系统设置里授予/收回后没有
+    // 回调进 Compose，所以每次回到前台重新读一次；刚授予时立刻重绘一次 widget，
+    // 让 provideGlance 按新的权限状态重排精确闹钟（否则要等下一轮 30 分钟周期刷新）。
+    var exactAlarmState by remember { mutableStateOf(widgetExactAlarmState(context)) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        val now = widgetExactAlarmState(context)
+        if (now == WidgetExactAlarmState.Granted && exactAlarmState == WidgetExactAlarmState.Missing) {
+            scope.launch { refreshTodayScheduleWidgets(context) }
+        }
+        exactAlarmState = now
+    }
+
     val versionName = remember(context) {
         runCatching {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
@@ -355,8 +378,19 @@ fun ProfileScreen(
                     ProfileSettingsSection(
                         versionName = versionName,
                         latestRelease = latestRelease,
+                        showExactAlarmEntry = exactAlarmState == WidgetExactAlarmState.Missing,
                         onOpenTheme = { showThemeDialog = true },
                         onAddWidgetClick = { showWidgetDialog = true },
+                        onExactAlarmClick = {
+                            // 直达系统「闹钟与提醒」页；精简 ROM 找不到入口时给一句可操作的提示。
+                            if (!openWidgetExactAlarmSettings(context)) {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        "没找到系统设置入口，请在系统设置中允许江师办「闹钟与提醒」",
+                                    )
+                                }
+                            }
+                        },
                         onAboutClick = { showAboutDialog = true },
                         onCheckUpdate = {
                             if (latestRelease != null) {
