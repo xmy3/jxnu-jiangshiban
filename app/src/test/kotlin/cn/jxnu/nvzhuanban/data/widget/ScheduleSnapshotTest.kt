@@ -229,6 +229,75 @@ class ScheduleSnapshotTest {
         assertTrue(restored.isEveningStudy)
     }
 
+    /**
+     * 用户校正「第 1 周周一」后，同一日期的教学周要整体平移：
+     * 名义 2026-03-01（周日）默认对齐 03-02；校正为 03-09 后 03-10 应从「第 2 周」变成「第 1 周」。
+     */
+    @Test
+    fun weekAtUsesUserCorrectedWeekOneMonday() {
+        val nominal = LocalDate.of(2026, 3, 1)
+        val corrected = LocalDate.of(2026, 3, 9)
+        val base = ScheduleSnapshot(
+            semester = "2025-2026-2",
+            totalWeeks = 18,
+            semesterStartEpochDay = nominal.toEpochDay(),
+            savedWeek = 1,
+            allCourses = emptyList(),
+            updatedAt = 1L,
+        )
+        val overridden = base.copy(weekOneMondayEpochDay = corrected.toEpochDay())
+
+        // 未校正：名义日对齐最近周一 → 03-02 起算，03-10 是第 2 周
+        assertEquals(LocalDate.of(2026, 3, 2), base.weekOneMondayDate)
+        assertEquals(2, base.weekAt(LocalDate.of(2026, 3, 10)))
+        // 已校正：03-09 起算，03-10 是第 1 周；校正值本身原样返回（不再二次对齐）
+        assertEquals(corrected, overridden.weekOneMondayDate)
+        assertEquals(1, overridden.weekAt(LocalDate.of(2026, 3, 10)))
+    }
+
+    /** 校正值必须跨进程/重启存活：toJson → fromJson 后仍按校正后的周坐标计算。 */
+    @Test
+    fun correctedWeekOneMondaySurvivesJsonRoundTrip() {
+        val corrected = LocalDate.of(2026, 9, 7)
+        val snapshot = autumnSnapshot(emptyList())
+            .copy(weekOneMondayEpochDay = corrected.toEpochDay())
+
+        val restored = ScheduleSnapshot.fromJson(snapshot.toJson())
+
+        assertEquals(corrected, restored.weekOneMondayDate)
+        assertEquals(18, restored.totalWeeks)
+        assertEquals(1, restored.weekAt(LocalDate.of(2026, 9, 8)))
+    }
+
+    /** 老快照没有新字段（JSON 里没有该键）：仍按名义开学日对齐，不因升级回退成 savedWeek。 */
+    @Test
+    fun legacySnapshotWithoutWeekOneMondayFallsBackToNominalAlignment() {
+        val epoch = LocalDate.of(2026, 3, 1).toEpochDay()
+        val legacy = ScheduleSnapshot.fromJson(
+            """{"semester":"x","totalWeeks":18,"semesterStartEpochDay":$epoch,"savedWeek":1,"courses":[]}""",
+        )
+
+        assertEquals(LocalDate.of(2026, 3, 2), legacy.weekOneMondayDate)
+        assertEquals(2, legacy.weekAt(LocalDate.of(2026, 3, 10)))
+    }
+
+    @Test
+    fun correctedSnapshotKeepsHolidaysAndMakeupAfterReload() {
+        val snapshot = autumnSnapshot(listOf(
+            course("第五周周五", weekday = 5, weeks = listOf(5)),
+            course("第六周周五", weekday = 5, weeks = listOf(6)),
+            course("周六", weekday = 6, weeks = (1..18).toList()),
+        )).copy(weekOneMondayEpochDay = LocalDate.of(2026, 9, 7).toEpochDay())
+        val restored = ScheduleSnapshot.fromJson(snapshot.toJson())
+        assertTrue(restored.coursesOn(LocalDate.of(2026, 10, 2)).isEmpty())
+        assertEquals(listOf("第五周周五"), restored.coursesOn(LocalDate.of(2026, 10, 10)).map { it.name })
+        val projected = cn.jxnu.nvzhuanban.data.model.AcademicCalendar.coursesForWeek(
+            restored.toCourses(), LocalDate.ofEpochDay(restored.semesterStartEpochDay), 5,
+            restored.weekOneMondayDate,
+        )
+        assertEquals(listOf("第五周周五"), projected.filter { it.weekday == 6 }.map { it.name })
+    }
+
     private fun autumnSnapshot(courses: List<SnapshotCourse>) = ScheduleSnapshot(
         semester = "2026-2027-1",
         totalWeeks = 18,

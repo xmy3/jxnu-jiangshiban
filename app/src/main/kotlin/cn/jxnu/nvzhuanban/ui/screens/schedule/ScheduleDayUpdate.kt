@@ -13,7 +13,8 @@ internal fun advanceOfflineScheduleDay(
 ): ScheduleDayUpdate {
     val total = previous.totalWeeks.coerceAtLeast(1)
     val wasOnCurrentWeek = previous.currentWeek != null && previous.selectedWeek == previous.currentWeek
-    val phase = SemesterPhase.at(previous.semesterStart, total, today)
+    // 周坐标取"生效的第 1 周周一"（用户校正优先），与顶栏/快照同源；无该字段时退回名义日。
+    val phase = SemesterPhase.at(previous.weekOneMonday ?: previous.semesterStart, total, today)
     val state = when (phase) {
         is SemesterPhase.InProgress -> {
             val week = phase.week.coerceIn(1, total)

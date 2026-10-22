@@ -12,6 +12,7 @@ import cn.jxnu.nvzhuanban.data.network.pages.SchedulePage
 import cn.jxnu.nvzhuanban.data.repository.AuthRepository
 import cn.jxnu.nvzhuanban.data.repository.ScheduleRepository
 import cn.jxnu.nvzhuanban.data.storage.EveningStudyStore
+import cn.jxnu.nvzhuanban.data.storage.SemesterSettings
 import cn.jxnu.nvzhuanban.data.widget.ScheduleSnapshot
 import cn.jxnu.nvzhuanban.data.widget.WidgetSnapshotStore
 import cn.jxnu.nvzhuanban.ui.components.UiState
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -59,6 +61,11 @@ data class ScheduleScreenState(
      * `(week, weekday)` 算成具体日期。null 表示尚未加载或服务器没给。
      */
     val semesterStart: LocalDate? = null,
+    /**
+     * 用户校正的第 1 周周一；null 时按名义开学日对齐。周次、列头日期、「今」列高亮
+     * 都读它；[semesterStart] 保持教务名义日原值，供开课查询等接口对表。
+     */
+    val weekOneMonday: LocalDate? = null,
     /**
      * true = 当前展示的是本地磁盘缓存（上次成功看到的课表），因为这次拉取网络失败。
      * UI 顶部据此显示"离线·上次课表"提示；下次成功拉取后复位 false。
@@ -115,6 +122,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 semesters = repo.availableSemesters(),
                 selectedSemesterValue = repo.currentSemesterValue(),
                 semesterStart = repo.currentSemesterStart(),
+                weekOneMonday = repo.weekOneMondayOverride(),
                 currentWeek = ts.currentWeek,
                 vacation = ts.vacation,
                 eveningStudyDays = es.days,
@@ -134,7 +142,40 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     private val _transientError = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val transientError: SharedFlow<String> = _transientError.asSharedFlow()
 
-    init { loadWeek(baselineWeek) }
+    init {
+        loadWeek(baselineWeek)
+        // 「学期与周次」保存/恢复默认后，周坐标与总周数都变了：重算时间态与选中周，
+        // 并把新值写进桌面小组件快照（widget 只认快照，不读本 VM 的 state）。
+        viewModelScope.launch {
+            SemesterSettings.revision.drop(1).collect { applySemesterSettings() }
+        }
+    }
+
+    /**
+     * 重新应用学期覆盖：不触碰网络，只按新周坐标重算派生状态。
+     * 选中周钳到新的 1..totalWeeks；正在看历史/未来学期时不改选中周（保留用户意图）。
+     */
+    private fun applySemesterSettings() {
+        // 离线视图的周坐标来自快照；登出清缓存后的变更信号也不能重写旧用户的快照。
+        if (_state.value.isOffline) return
+        val courses = repo.cachedSchedule() ?: return
+        val ts = deriveTimeState()
+        val total = repo.totalWeeks().coerceAtLeast(1)
+        baselineWeek = ts.baselineWeek
+        _state.update {
+            it.copy(
+                data = if (it.data is UiState.Success) UiState.Success(courses) else it.data,
+                totalWeeks = total,
+                weekOneMonday = repo.weekOneMondayOverride(),
+                currentWeek = ts.currentWeek,
+                vacation = ts.vacation,
+                selectedWeek = if (it.currentWeek != null && it.selectedWeek == it.currentWeek) {
+                    ts.baselineWeek.coerceIn(1, total)
+                } else it.selectedWeek.coerceIn(1, total),
+            )
+        }
+        (_state.value.data as? UiState.Success)?.let { refreshWidgetSnapshot(it.data) }
+    }
 
     /** 由 repo 当前缓存派生的"时间态"，见 [deriveTimeState]。 */
     private data class TimeState(
@@ -287,6 +328,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                         selectedSemesterValue = value,
                         semesters = repo.availableSemesters(),
                         semesterStart = repo.currentSemesterStart(),
+                        weekOneMonday = repo.weekOneMondayOverride(),
                         // 切到本学期 → 跳到"今天"基线周（进行中=本周，已放假=最后一周）；
                         // 切到历史/未来学期 → 第 1 周
                         selectedWeek = if (ts.isCurrentSelected) ts.baselineWeek else 1,
@@ -341,6 +383,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                         semesters = repo.availableSemesters(),
                         selectedSemesterValue = repo.currentSemesterValue(),
                         semesterStart = repo.currentSemesterStart(),
+                        weekOneMonday = repo.weekOneMondayOverride(),
                         isOffline = false,
                         currentWeek = ts.currentWeek,
                         vacation = ts.vacation,
@@ -459,6 +502,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                         semesters = repo.availableSemesters(),
                         selectedSemesterValue = repo.currentSemesterValue(),
                         semesterStart = repo.currentSemesterStart(),
+                        weekOneMonday = repo.weekOneMondayOverride(),
                         // 仅首次加载、且用户没主动切过学期时，把 selectedWeek 拉到"今天"基线周
                         //（进行中=本周，已放假=最后一周，未开学=第 1 周；均已钳制在合法范围）
                         selectedWeek = if (wasFirstLoad && !userPickedSemester) ts.baselineWeek else it.selectedWeek,
@@ -511,6 +555,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         val semester: String,
         val totalWeeks: Int,
         val semesterStart: LocalDate?,
+        val weekOneMonday: LocalDate?,
         val week: Int,
         /** 快照学期"进行中"才非 null；放假/未开学时离线视图同样不高亮「今 / 本周」。 */
         val currentWeek: Int?,
@@ -530,7 +575,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         val week: Int
         val currentWeek: Int?
         var vacation: VacationInfo? = null
-        when (val phase = SemesterPhase.at(semesterStart, totalWeeks, LocalDate.now())) {
+        when (val phase = SemesterPhase.at(snap.weekOneMondayDate, totalWeeks, LocalDate.now())) {
             is SemesterPhase.InProgress -> {
                 week = phase.week.coerceAtMost(totalWeeks)
                 currentWeek = week
@@ -556,6 +601,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             semester = snap.semester.ifBlank { "上次课表" },
             totalWeeks = totalWeeks,
             semesterStart = semesterStart,
+            weekOneMonday = snap.weekOneMondayDate,
             week = week,
             currentWeek = currentWeek,
             vacation = vacation,
@@ -580,6 +626,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 semester = offline.semester,
                 totalWeeks = offline.totalWeeks,
                 semesterStart = offline.semesterStart,
+                weekOneMonday = offline.weekOneMonday,
                 selectedSemesterValue = null,
                 semesters = emptyList(),
                 selectedWeek = offline.week.coerceIn(1, offline.totalWeeks.coerceAtLeast(1)),
@@ -613,6 +660,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             semester = repo.currentSemester(),
             totalWeeks = repo.totalWeeks(),
             semesterStart = repo.currentSemesterStart(),
+            weekOneMonday = repo.weekOneMondayOverride(),
             all = all,
             nextSemesterStart = nextStart,
         )

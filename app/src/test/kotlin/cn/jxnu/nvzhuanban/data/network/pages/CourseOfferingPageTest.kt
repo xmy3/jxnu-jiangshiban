@@ -5,6 +5,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Assert.assertThrows
+import cn.jxnu.nvzhuanban.data.network.JwcException
 
 /**
  * 开课查询页（Public_Kkap）解析回归测试。
@@ -14,6 +16,19 @@ import org.junit.Test
  * 渲染惯例构造的合成 HTML 锁定「表头驱动」解析行为——真实列名 / 列数变化不影响这些断言。
  */
 class CourseOfferingPageTest {
+
+    @Test
+    fun `shell pages fail and misaligned results produce one warning`() {
+        val shell = "<html><body>页面框架</body></html>"
+        assertThrows(JwcException::class.java) { CourseOfferingPage.parseForm(shell) }
+        assertThrows(JwcException::class.java) { CourseOfferingPage.parseResult(shell) }
+        val result = CourseOfferingPage.parseResultPage("""
+            <table id='gvContent'><tr><th>课程</th><th>教师</th><th>教室</th></tr>
+            <tr><td>高数</td><td>张老师</td></tr></table>
+        """)
+        assertEquals(1, result.warnings.size)
+        assertEquals(listOf("高数", "张老师", ""), result.value.rows.single())
+    }
 
     @Test
     fun `parses form dropdowns and tokens from real capture`() {

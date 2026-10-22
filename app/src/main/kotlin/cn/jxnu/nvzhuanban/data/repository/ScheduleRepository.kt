@@ -9,6 +9,7 @@ import cn.jxnu.nvzhuanban.data.network.JxnuUrls
 import cn.jxnu.nvzhuanban.data.network.pages.SchedulePage
 import cn.jxnu.nvzhuanban.data.storage.CourseOverridesStore
 import cn.jxnu.nvzhuanban.data.storage.EveningStudyStore
+import cn.jxnu.nvzhuanban.data.storage.SemesterSettings
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.FormBody
@@ -146,15 +147,19 @@ class ScheduleRepository(
     private fun applyWeekOverrides(courses: List<Course>): List<Course> {
         val start = currentSemesterStart() ?: return courses
         val overrides = CourseOverridesStore.current(start)
-        if (overrides.isEmpty()) return courses
+        val defaultWeeks = (1..totalWeeks()).toList()
         return courses.map { c ->
-            overrides[c.name]?.let { c.copy(weeks = it) } ?: c
+            c.copy(weeks = overrides[c.name] ?: defaultWeeks)
         }
     }
 
     /** 江师大课表页不区分周次，所有周次返回相同的 List<Course>；接口签名保留以兼容 UI 切周。 */
     suspend fun getSchedule(week: Int): List<Course> =
         applyEveningStudy(applyWeekOverrides(enrichCourses(ensureLoaded())))
+
+    /** 仅重算已缓存课程的本地设置，供学期校正使用；缓存不存在时不触发网络请求。 */
+    fun cachedSchedule(): List<Course>? =
+        cached?.let { applyEveningStudy(applyWeekOverrides(enrichCourses(it))) }
 
     /**
      * 大一学年学期追加合成的晚自习卡（详见 [EveningStudy]）。放在 [applyWeekOverrides] 之后：
@@ -317,10 +322,36 @@ class ScheduleRepository(
      * 选中历史学期时会得到 [SemesterPhase.Ended]、未来学期得到 [SemesterPhase.NotStarted]，
      * 由 ViewModel 结合 [SchedulePage.SemesterOption.isCurrent] 解读。
      */
-    fun currentPhase(today: LocalDate = LocalDate.now()): SemesterPhase? = cached?.phaseAt(today)
-    fun totalWeeks(): Int = cached?.totalWeeks ?: 18
+    fun currentPhase(today: LocalDate = LocalDate.now()): SemesterPhase? {
+        // 周坐标：用户校正过就用校正周一，否则用名义开学日（at() 内部对齐最近周一，
+        // 与 cached.phaseAt 完全等价）。两者都拿不到时才返回 null。
+        val start = weekOneMondayOverride() ?: cached?.semesterStart ?: return null
+        return SemesterPhase.at(start, totalWeeks(), today)
+    }
+
+    /**
+     * 生效的总周数：用户按学期覆盖优先，其次教务解析值，最后回退 18。
+     * 覆盖只对 `cached.semesterStart`（名义开学日）匹配的学期生效，切学期不会串。
+     */
+    fun totalWeeks(): Int =
+        SemesterSettings.totalWeeksFor(cached?.semesterStart, cached?.totalWeeks ?: 0)
+
+    fun schoolTotalWeeks(): Int = cached?.totalWeeks ?: SemesterSettings.DEFAULT_TOTAL_WEEKS
+
+    /**
+     * 用户校正的「第 1 周周一」；**没校正过就是 null**（不是"对齐后的周一"）。
+     *
+     * 校历查表仍须使用名义开学日；此值仅用于教学周坐标。
+     */
+    fun weekOneMondayOverride(): LocalDate? =
+        SemesterSettings.overrideFor(cached?.semesterStart)?.weekOneMonday
+
     fun currentSemester(): String = cached?.semester ?: "—"
-    /** 当前已加载学期的开学日；UI 用来把 `(week, weekday)` 反算成日期。 */
+
+    /**
+     * 当前已加载学期的**名义**开学日（教务 option value）。
+     * 刻意不做覆盖：开课查询等接口要拿它和教务自己的学期下拉对齐，必须原值。
+     */
     fun currentSemesterStart(): java.time.LocalDate? = cached?.semesterStart
 
     /**

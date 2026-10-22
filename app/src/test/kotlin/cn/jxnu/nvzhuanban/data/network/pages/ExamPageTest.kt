@@ -17,6 +17,13 @@ import java.time.LocalDateTime
 class ExamPageTest {
 
     @Test
+    fun `empty GridView placeholder is not a dropped exam`() {
+        val page = ExamPage.parsePage("<table id='_ctl1_dgContent'><tr><td colspan='7'>暂无考试</td></tr></table>")
+        assertTrue(page.value.isEmpty())
+        assertTrue(page.warnings.isEmpty())
+    }
+
+    @Test
     fun `parses well-formed exam rows`() {
         val exams = ExamPage.parse(FIXTURE)
         assertEquals(2, exams.size)

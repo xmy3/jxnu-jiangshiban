@@ -62,9 +62,18 @@ object TrainingPlanSearchPage {
         val submit = form?.select("input[type=submit][name], button[type=submit][name]")
             ?.firstOrNull { searchWords.containsMatchIn(it.attr("value") + it.text()) }
             ?: form?.selectFirst("input[type=submit][name], button[type=submit][name]")
+        val tables = parseTables(doc)
+        // 空页守卫：真实页面至少渲染「年级 / 专业」下拉（filters）或结果表之一 —— 这也是 seed GET
+        // 与 POST 结果页共有的结构。两者全无说明拿到的是半失效会话的壳页，空 Parsed 会让 UI 显示
+        // 一个没有筛选项、没有结果的空壳。
+        PageGuard.requireBusinessPage(
+            doc = doc,
+            pageName = "培养方案",
+            anchorFound = filters.isNotEmpty() || tables.isNotEmpty(),
+        )
         return Parsed(
             filters = filters,
-            tables = parseTables(doc),
+            tables = tables,
             message = doc.select("span[id*=lblMsg], div[id*=lblMsg], span[id*=lblMessage]")
                 .map { it.text().trim() }.firstOrNull { it.isNotEmpty() },
             hiddenFields = form?.select("input[type=hidden][name]")

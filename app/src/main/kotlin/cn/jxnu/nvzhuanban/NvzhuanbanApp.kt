@@ -13,6 +13,7 @@ import cn.jxnu.nvzhuanban.data.storage.CourseOverridesStore
 import cn.jxnu.nvzhuanban.data.storage.EveningStudyStore
 import cn.jxnu.nvzhuanban.data.storage.PeopleSearchHistoryStore
 import cn.jxnu.nvzhuanban.data.storage.ScheduleHeightPrefs
+import cn.jxnu.nvzhuanban.data.storage.SemesterSettings
 import cn.jxnu.nvzhuanban.data.storage.ThemePrefs
 import cn.jxnu.nvzhuanban.data.storage.UpdatePrefs
 import cn.jxnu.nvzhuanban.data.work.AlertScheduler
@@ -50,6 +51,7 @@ class NvzhuanbanApp : Application() {
         ThemePrefs.init(this)
         AvatarPrefs.init(this)
         ScheduleHeightPrefs.init(this)
+        SemesterSettings.init(this)
         CourseOverridesStore.init(this)
         EveningStudyStore.init(this)
         PeopleSearchHistoryStore.init(this)
@@ -126,6 +128,7 @@ class NvzhuanbanApp : Application() {
             "announcement_read_prefs", // AnnouncementReadAnchor
             "update_prefs",            // UpdatePrefs
             "alert_prefs",             // AlertPrefs（出分 / 考试变更提醒）
+            "semester_settings",       // SemesterSettings（学期周次覆盖）
             "jxnu_auth",               // AuthStorage（AuthRepository.init 内首读）
         )
     }

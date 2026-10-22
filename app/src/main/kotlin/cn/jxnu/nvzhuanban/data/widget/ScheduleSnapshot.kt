@@ -31,6 +31,11 @@ data class ScheduleSnapshot(
     /** 本学期开学第一天的 epoch day；-1 表示未知（老快照 / 教务网没给）。 */
     val semesterStartEpochDay: Long,
     /**
+     * 用户校正过的「第 1 周周一」epoch day；-1 = 未校正（按 [semesterStartEpochDay] 对齐推算）。
+     * 单独存而不覆盖 [semesterStartEpochDay]：后者是 CourseOverridesStore 的学期身份键，必须保持名义日。
+     */
+    val weekOneMondayEpochDay: Long = -1L,
+    /**
      * 下一个学期的名义开学日 epoch day；-1 表示未知（教务还没放出下学期选项 / 老快照）。
      * 假期态（本学期已结束）时 widget 用它显示「距开学 N 天」倒计时。
      * 存储保持名义日期（老快照无需迁移），读取一律走 [nextSemesterStart]——它会对齐到第 1 周周一。
@@ -48,8 +53,8 @@ data class ScheduleSnapshot(
      * "第 N 周"和 App 顶栏一致。
      */
     fun weekAt(date: LocalDate = LocalDate.now()): Int {
-        if (semesterStartEpochDay < 0) return savedWeek
-        val monday = SemesterPhase.weekOneMonday(LocalDate.ofEpochDay(semesterStartEpochDay))
+        // 需要日期时优先用用户校正的周一；两个日期字段都没有才回退 savedWeek。
+        val monday = weekOneMondayDate ?: return savedWeek
         val days = ChronoUnit.DAYS.between(monday, date).toInt()
         if (days < 0) return 0
         val w = days / 7 + 1
@@ -68,6 +73,7 @@ data class ScheduleSnapshot(
      *   但区分不出"旧 snapshot 缺信息"和"刚好放假"，所以这里再用 [hasSemesterStart] 做一次显式判定。
      */
     fun coursesOn(date: LocalDate = LocalDate.now()): List<SnapshotCourse> {
+        // 校历按名义学期键查固定日期；周次再由 weekAt 按用户校正值计算。
         val semesterStart = if (hasSemesterStart) LocalDate.ofEpochDay(semesterStartEpochDay) else null
         val teachingDate = AcademicCalendar.teachingDate(semesterStart, date) ?: return emptyList()
         val weekday = teachingDate.dayOfWeek.value
@@ -83,6 +89,20 @@ data class ScheduleSnapshot(
 
     /** 这份 snapshot 是否带有可信的学期起始日（旧版没有）。 */
     val hasSemesterStart: Boolean get() = semesterStartEpochDay >= 0L
+    /** 快照是否带用户校正过的「第 1 周周一」（旧快照没有该字段）。 */
+    val hasWeekOneMonday: Boolean get() = weekOneMondayEpochDay >= 0L
+
+    /**
+     * 生效的第 1 周周一：优先用户校正值，否则由 [semesterStartEpochDay] 名义日对齐得出。
+     * [weekAt] 与 widget 的相位判定都读它，保证与课表页同一套周坐标。
+     */
+    val weekOneMondayDate: LocalDate?
+        get() = when {
+            hasWeekOneMonday -> LocalDate.ofEpochDay(weekOneMondayEpochDay)
+            semesterStartEpochDay >= 0 ->
+                SemesterPhase.weekOneMonday(LocalDate.ofEpochDay(semesterStartEpochDay))
+            else -> null
+        }
 
     /**
      * 下学期开学日 = 第 1 周周一（存储的名义日经 [SemesterPhase.weekOneMonday] 对齐，如名义
@@ -135,6 +155,7 @@ data class ScheduleSnapshot(
             .put("semester", semester)
             .put("totalWeeks", totalWeeks)
             .put("semesterStartEpochDay", semesterStartEpochDay)
+            .put("weekOneMondayEpochDay", weekOneMondayEpochDay)
             .put("nextSemesterStartEpochDay", nextSemesterStartEpochDay)
             .put("savedWeek", savedWeek)
             .put("updatedAt", updatedAt)
@@ -152,18 +173,25 @@ data class ScheduleSnapshot(
             updatedAt = 0L,
         )
 
+        /**
+         * @param weekOneMonday 用户校正过的「第 1 周周一」（见 SemesterSettings）；
+         *   null = 未校正，读取侧按 [semesterStart] 名义日对齐推算。
+         */
         fun fromCourses(
             semester: String,
             totalWeeks: Int,
             semesterStart: LocalDate?,
             all: List<Course>,
             nextSemesterStart: LocalDate? = null,
+            weekOneMonday: LocalDate? = null,
         ): ScheduleSnapshot {
             val today = LocalDate.now()
             val startEpoch = semesterStart?.toEpochDay() ?: -1L
-            val savedWeek = if (semesterStart != null) {
-                val monday = SemesterPhase.weekOneMonday(semesterStart)
-                val days = ChronoUnit.DAYS.between(monday, today).toInt()
+            // 周次按"生效的第 1 周周一"算：用户校正过就用校正值，否则对齐名义日。
+            val anchorMonday = weekOneMonday
+                ?: semesterStart?.let { SemesterPhase.weekOneMonday(it) }
+            val savedWeek = if (anchorMonday != null) {
+                val days = ChronoUnit.DAYS.between(anchorMonday, today).toInt()
                 val w = (days / 7 + 1).coerceAtLeast(1)
                 if (totalWeeks > 0) w.coerceAtMost(totalWeeks) else w
             } else 0
@@ -171,6 +199,7 @@ data class ScheduleSnapshot(
                 semester = semester,
                 totalWeeks = totalWeeks,
                 semesterStartEpochDay = startEpoch,
+                weekOneMondayEpochDay = weekOneMonday?.toEpochDay() ?: -1L,
                 nextSemesterStartEpochDay = nextSemesterStart?.toEpochDay() ?: -1L,
                 savedWeek = savedWeek,
                 allCourses = all.map { c ->
@@ -214,6 +243,7 @@ data class ScheduleSnapshot(
                 totalWeeks = o.optInt("totalWeeks", 0),
                 semesterStartEpochDay = o.optLong("semesterStartEpochDay", -1L),
                 nextSemesterStartEpochDay = o.optLong("nextSemesterStartEpochDay", -1L),
+                weekOneMondayEpochDay = o.optLong("weekOneMondayEpochDay", -1L),
                 savedWeek = savedWeekField,
                 allCourses = list,
                 updatedAt = o.optLong("updatedAt"),

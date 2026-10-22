@@ -21,6 +21,13 @@ import org.junit.Test
 class GradePageTest {
 
     @Test
+    fun `empty GridView placeholder is not a dropped grade`() {
+        val page = GradePage.parsePage("<table id='_ctl6_dgContent'><tr><td colspan='8'>暂无成绩</td></tr></table>")
+        assertTrue(page.value.semesters.isEmpty())
+        assertTrue(page.warnings.isEmpty())
+    }
+
+    @Test
     fun `parses student meta from lblMsg`() {
         val parsed = GradePage.parse(FIXTURE)
         val meta = parsed.meta

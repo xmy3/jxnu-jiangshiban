@@ -3,8 +3,14 @@ package cn.jxnu.nvzhuanban.data.network.pages
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Assert.assertThrows
+import cn.jxnu.nvzhuanban.data.network.JwcException
 
 class TrainingPlanSearchPageTest {
+    @Test
+    fun `shell response is not cached as an empty search form`() {
+        assertThrows(JwcException::class.java) { TrainingPlanSearchPage.parse("<body>页面框架</body>") }
+    }
     @Test fun `parses actual training plan control names and td table headers`() {
         val html = """
             <form name="_ctl0" id="_ctl0" method="post">

@@ -17,6 +17,13 @@ import org.junit.Test
 class MakeupExamPageTest {
 
     @Test
+    fun `empty GridView placeholder is not a dropped makeup exam`() {
+        val page = MakeupExamPage.parsePage("<table id='_ctl6_dgContent'><tr><td colspan='13'>暂无补缓考</td></tr></table>")
+        assertTrue(page.value.isEmpty())
+        assertTrue(page.warnings.isEmpty())
+    }
+
+    @Test
     fun `parses a make-up exam row`() {
         val items = MakeupExamPage.parse(FIXTURE)
         assertEquals(1, items.size)

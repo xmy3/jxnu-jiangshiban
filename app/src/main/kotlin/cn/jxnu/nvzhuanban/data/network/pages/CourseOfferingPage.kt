@@ -30,6 +30,9 @@ object CourseOfferingPage {
 
     fun parseForm(html: String): CourseOfferingForm {
         val doc = Jsoup.parse(html)
+        // 空页守卫：表单页 / POST 结果页都会重渲 `select#ddlSterm` 与页面标题；两者全无说明
+        // 拿到的是半失效会话的壳页，别把空表单当成"系统真的没有学期可选"。
+        PageGuard.requireBusinessPage(doc, "开课查询", hasFormAnchors(doc))
         return CourseOfferingForm(
             semesters = options(doc, "ddlSterm"),
             colleges = options(doc, "ddlCollege"),
@@ -41,15 +44,28 @@ object CourseOfferingPage {
         )
     }
 
-    fun parseResult(html: String): CourseOfferingTable {
+    fun parseResult(html: String): CourseOfferingTable = parseResultPage(html).value
+
+    /**
+     * 带解析告警的结果区解析；[parseResult] 委托给它，结果与旧行为逐条一致。
+     *
+     * 空结果（`table#gvContent` 与 `form table` 都不存在）在业务页上是合法的「还没查」，
+     * 因此只在页面锚点也消失时抛错。
+     */
+    fun parseResultPage(html: String): PageParse<CourseOfferingTable> {
         val doc = Jsoup.parse(html)
         // 带数据时 GridView 渲染成 table#gvContent；兜底任意 form 内表格（该页无布局表格）。
         val table = doc.selectFirst("table#gvContent")
             ?: doc.selectFirst("form table")
-            ?: return CourseOfferingTable(emptyList(), emptyList())
+        PageGuard.requireBusinessPage(
+            doc = doc,
+            pageName = "开课查询",
+            anchorFound = table != null || hasFormAnchors(doc),
+        )
+        if (table == null) return PageParse(CourseOfferingTable(emptyList(), emptyList()))
 
         val trs = table.select("> tbody > tr, > tr")
-        if (trs.isEmpty()) return CourseOfferingTable(emptyList(), emptyList())
+        if (trs.isEmpty()) return PageParse(CourseOfferingTable(emptyList(), emptyList()))
 
         val first = trs.first()!!
         val headerCells = first.children().filter { it.tagName() == "th" }
@@ -57,6 +73,7 @@ object CourseOfferingPage {
         val dataRows = if (columns.isNotEmpty()) trs.drop(1) else trs.toList()
 
         var message: String? = null
+        var misaligned = 0
         val rows = dataRows.mapNotNull { tr ->
             val cells = tr.children().filter { it.tagName() == "td" }
             if (cells.isEmpty()) return@mapNotNull null
@@ -65,10 +82,21 @@ object CourseOfferingPage {
                 message = message ?: cells[0].text().trim().takeIf { it.isNotEmpty() }
                 return@mapNotNull null
             }
+            // 表头驱动：列数对不上的行靠补空/截断对齐，内容可能错位 —— 计数并提示
+            if (columns.isNotEmpty() && cells.size != columns.size) misaligned++
             cellsAligned(cells, columns.size)
         }
-        return CourseOfferingTable(columns = columns, rows = rows, message = message)
+        val warnings = if (misaligned > 0) {
+            listOf("开课查询结果有 $misaligned 行列数与表头不一致，内容可能错位")
+        } else {
+            emptyList()
+        }
+        return PageParse(CourseOfferingTable(columns = columns, rows = rows, message = message), warnings)
     }
+
+    /** 页面级锚点：结果页与表单页都会渲染的控件/标题。 */
+    private fun hasFormAnchors(doc: Document): Boolean =
+        doc.selectFirst("select#ddlSterm") != null || doc.selectFirst("div.text-large") != null
 
     /** 单元格文本对齐到列数：列未知（columns 空）时原样返回，已知时不足补空、超出截断。 */
     private fun cellsAligned(cells: List<Element>, columnCount: Int): List<String> {

@@ -5,8 +5,16 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Assert.assertThrows
+import cn.jxnu.nvzhuanban.data.network.JwcException
 
 class TeacherSearchPageTest {
+
+    @Test
+    fun `shell response fails while no matches remains valid`() {
+        assertThrows(JwcException::class.java) { TeacherSearchPage.parse("<body>页面框架</body>") }
+        assertTrue(TeacherSearchPage.parse("<span id='_ctl1_lblMsg'>查询结果：0 条记录</span>").teachers.isEmpty())
+    }
 
     @Test
     fun `parses single teacher from saved sample`() {

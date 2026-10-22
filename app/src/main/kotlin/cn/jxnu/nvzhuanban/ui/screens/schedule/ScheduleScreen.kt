@@ -286,8 +286,9 @@ fun ScheduleScreen(
             state.vacation?.let { info ->
                 VacationBanner(info, today) { value -> viewModel.selectSemester(value) }
             }
-            val adjustments = remember(state.semesterStart, state.selectedWeek) {
-                AcademicCalendar.adjustmentsForWeek(state.semesterStart, state.selectedWeek)
+            val weekAnchor = state.weekOneMonday ?: state.semesterStart
+            val adjustments = remember(state.semesterStart, weekAnchor, state.selectedWeek) {
+                AcademicCalendar.adjustmentsForWeek(state.semesterStart, state.selectedWeek, state.weekOneMonday)
             }
             CalendarAdjustmentBanner(adjustments)
             // 普通周沿用整学期折叠规则；有校历安排的周末必须展开，不能把补课隐藏掉。
@@ -298,7 +299,7 @@ fun ScheduleScreen(
             }
             WeekdayHeader(
                 todayWeekday = todayWeekday,
-                semesterStart = state.semesterStart,
+                semesterStart = weekAnchor,
                 selectedWeek = state.selectedWeek,
                 foldedDays = foldedDays,
                 adjustments = adjustments,
@@ -314,8 +315,9 @@ fun ScheduleScreen(
                     onRefresh = viewModel::refresh,
                 ) {
                     // 对原课表作日期投影：停课日清空、补课按校历取课，原始周次仍供编辑和快照使用。
-                    val visibleCourses = remember(courses, state.semesterStart, state.selectedWeek) {
-                        AcademicCalendar.coursesForWeek(courses, state.semesterStart, state.selectedWeek)
+                    // 周坐标取"生效的第 1 周周一"（用户可在「学期与周次」校正），与顶栏/周次同源。
+                    val visibleCourses = remember(courses, state.semesterStart, weekAnchor, state.selectedWeek) {
+                        AcademicCalendar.coursesForWeek(courses, state.semesterStart, state.selectedWeek, state.weekOneMonday)
                     }
                     val onSwipeLeft = {
                         if (state.selectedWeek < state.totalWeeks) {
@@ -383,7 +385,8 @@ fun ScheduleScreen(
             CourseDetailSheet(
                 course = selectedCourse!!,
                 weekTotal = state.totalWeeks,
-                calendarNote = AcademicCalendar.adjustmentsForWeek(state.semesterStart, state.selectedWeek)
+                calendarNote = AcademicCalendar
+                    .adjustmentsForWeek(state.semesterStart, state.selectedWeek, state.weekOneMonday)
                     .firstOrNull { it.date.dayOfWeek.value == selectedCourse!!.weekday && it.sourceDate != null }
                     ?.description,
                 onEditWeeks = {

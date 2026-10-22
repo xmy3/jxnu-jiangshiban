@@ -24,8 +24,10 @@ import androidx.compose.material.icons.automirrored.outlined.ListAlt
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.ColorLens
+import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.MeetingRoom
 import androidx.compose.material.icons.outlined.NotificationsActive
@@ -132,6 +134,12 @@ internal fun ProfileSettingsSection(
     examReminderSubtitle: String,
     onExamReminderToggle: (Boolean) -> Unit,
     onOpenTheme: () -> Unit,
+    /** 「学期与周次」行的副标题（当前生效的第 1 周周一 / 总周数），由调用方算好传入。 */
+    semesterSubtitle: String,
+    onOpenSemesterSettings: () -> Unit,
+    /** 仅调试包显示「开发者工具」入口；正式包不渲染这一行。 */
+    showDebugTools: Boolean = false,
+    onOpenDebugTools: () -> Unit = {},
     onAddWidgetClick: () -> Unit,
     onExactAlarmClick: () -> Unit,
     onAboutClick: () -> Unit,
@@ -162,6 +170,13 @@ internal fun ProfileSettingsSection(
                     Spacer(Modifier.width(8.dp))
                     ProfileRowChevron()
                 },
+            )
+            ProfileSectionDivider()
+            ProfileServiceRow(
+                icon = Icons.Outlined.DateRange,
+                title = "学期与周次",
+                subtitle = semesterSubtitle,
+                onClick = onOpenSemesterSettings,
             )
             ProfileSectionDivider()
             // 出分 / 考试变更提醒：本地周期轮询 + 通知，没有服务端推送（说明写在副标题里）
@@ -199,6 +214,15 @@ internal fun ProfileSettingsSection(
                     subtitle = "未开启：上下课切换可能延迟几分钟",
                     iconTint = serviceAccent,
                     onClick = onExactAlarmClick,
+                )
+            }
+            if (showDebugTools) {
+                ProfileSectionDivider()
+                ProfileServiceRow(
+                    icon = Icons.Outlined.BugReport,
+                    title = "开发者工具",
+                    subtitle = "Cookie 导出 / 会话探针（仅调试包）",
+                    onClick = onOpenDebugTools,
                 )
             }
             ProfileSectionDivider()

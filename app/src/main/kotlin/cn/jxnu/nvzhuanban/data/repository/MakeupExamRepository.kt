@@ -3,6 +3,7 @@ package cn.jxnu.nvzhuanban.data.repository
 import cn.jxnu.nvzhuanban.data.model.MakeupExam
 import cn.jxnu.nvzhuanban.data.network.JwcClient
 import cn.jxnu.nvzhuanban.data.network.JxnuUrls
+import cn.jxnu.nvzhuanban.data.network.ParseWarnings
 import cn.jxnu.nvzhuanban.data.network.pages.MakeupExamPage
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,7 +36,10 @@ class MakeupExamRepository {
 
     private suspend fun fetchNow(): List<MakeupExam> {
         val html = JwcClient.getHtmlAuth(JxnuUrls.PAGE_MAKEUP_EXAM, "补缓考页返回空响应")
-        return MakeupExamPage.parse(html)
+        val page = MakeupExamPage.parsePage(html)
+        // 只在真正拉网络时上报；缓存命中不重复弹同一句告警
+        page.warnings.forEach(ParseWarnings::report)
+        return page.value
     }
 
     companion object {

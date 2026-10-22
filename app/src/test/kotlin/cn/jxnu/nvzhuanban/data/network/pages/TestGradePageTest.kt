@@ -5,6 +5,8 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Assert.assertThrows
+import cn.jxnu.nvzhuanban.data.network.JwcException
 
 /**
  * 考试出分页（xfz_Test_cj.ascx）解析回归测试。fixture 来自 `samples/test_grades.html` 的关键片段。
@@ -16,6 +18,16 @@ import org.junit.Test
  *  - 双专业课程成绩 `_ctl6_gvSZY` 仅含 `<td colspan="10">没有记录</td>` 时整组被过滤
  */
 class TestGradePageTest {
+
+    @Test
+    fun `missing anchors fail but a placeholder group remains a valid empty report`() {
+        assertThrows(JwcException::class.java) { TestGradePage.parse("<body>页面框架</body>") }
+        val result = TestGradePage.parsePage("""
+            <fieldset><legend>期末考试</legend><table><tr><td colspan='11'>没有记录</td></tr></table></fieldset>
+        """)
+        assertTrue(result.value.groups.isEmpty())
+        assertTrue(result.warnings.isEmpty())
+    }
 
     @Test
     fun `parses page title and student meta`() {

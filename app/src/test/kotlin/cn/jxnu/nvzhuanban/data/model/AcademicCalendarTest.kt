@@ -11,6 +11,29 @@ import java.time.LocalDate
 class AcademicCalendarTest {
     private val autumn = LocalDate.of(2026, 9, 1)
 
+    @Test
+    fun `corrected week coordinates preserve fixed holidays and makeup source weeks`() {
+        val monday = LocalDate.of(2026, 9, 7)
+        val courses = (1..7).map { course(it) }
+        assertEquals(listOf(1, 2, 3), AcademicCalendar.coursesForWeek(courses, autumn, 4, monday).map { it.weekday })
+        assertEquals(listOf(5, 6, 7, 10), AcademicCalendar.adjustmentsForWeek(autumn, 5, monday).map { it.date.dayOfMonth })
+
+        val friday = course(5, listOf(5), "correct-week")
+        val result = AcademicCalendar.coursesForWeek(
+            listOf(friday, course(5, listOf(6), "wrong-week"), course(6)), autumn, 5, monday,
+        )
+        assertEquals(listOf(friday.copy(weekday = 6)), result.filter { it.weekday == 6 })
+        assertFalse(result.any { it.id == "wrong-week" })
+    }
+
+    @Test
+    fun `offline aligned Monday retains the nominal semester calendar`() {
+        val result = AcademicCalendar.coursesForWeek(
+            (1..7).map { course(it) }, autumn, 5, SemesterPhase.weekOneMonday(autumn),
+        )
+        assertEquals(listOf(1, 2, 3), result.map { it.weekday })
+    }
+
     private fun course(day: Int, weeks: List<Int> = (1..18).toList(), id: String = "course-$day") = Course(
         id = id,
         name = "课程$day",

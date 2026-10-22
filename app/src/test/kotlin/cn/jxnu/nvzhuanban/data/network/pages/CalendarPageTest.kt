@@ -6,6 +6,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Assert.assertThrows
+import cn.jxnu.nvzhuanban.data.network.JwcException
 import java.nio.charset.Charset
 
 /**
@@ -17,6 +19,14 @@ import java.nio.charset.Charset
  * fixture 字符串覆盖边角情形：标题双空格、bg-blue 调整版、wnl.htm、各文件类型后缀、插件注入噪声。
  */
 class CalendarPageTest {
+
+    @Test
+    fun `missing calendar anchor fails but an empty index is valid`() {
+        assertThrows(JwcException::class.java) {
+            CalendarPage.parse("<html><body>页面框架</body></html>", "https://jwc.jxnu.edu.cn/")
+        }
+        assertTrue(CalendarPage.parse("<ul class='list-group'></ul>", "https://jwc.jxnu.edu.cn/").isEmpty())
+    }
 
     private val GBK: Charset = Charset.forName("GBK")
 

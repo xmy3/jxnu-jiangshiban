@@ -2,8 +2,6 @@ package cn.jxnu.nvzhuanban.data.network.pages
 
 import cn.jxnu.nvzhuanban.data.model.Grade
 import cn.jxnu.nvzhuanban.data.model.SemesterSummary
-import cn.jxnu.nvzhuanban.data.network.JwcError
-import cn.jxnu.nvzhuanban.data.network.JwcException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -39,33 +37,43 @@ object GradePage {
         val semesters: List<SemesterSummary>,
     )
 
-    fun parse(html: String): Parsed {
+    fun parse(html: String): Parsed = parsePage(html).value
+
+    /**
+     * 带解析告警的入口；[parse] 委托给它，字段语义完全一致。
+     *
+     * 结构性 fail-fast 走 [PageGuard]：个人信息、校内成绩表、交流成绩表均缺失，说明这不是成绩页 ——
+     * 最常见是半失效会话下 jwc 返回 200 的业务壳页（JwcResponseGuard 只能识别登录页形态，拦不住这种）。
+     * 之前静默解析成「空 meta + 0 条成绩」还会被 GradeRepository 写进缓存，用户看到的是无提示的空成绩单。
+     * 抛 Decode 让 UI 走错误态、缓存保持未污染。暂无成绩（大一新生）时 lblMsg 仍在；只有交流成绩的页面
+     * 也能正常解析。
+     */
+    fun parsePage(html: String): PageParse<Parsed> {
         val doc = Jsoup.parse(html)
         val exchangeTables = findExchangeTables(doc)
-        // 结构性 fail-fast：个人信息、校内成绩表、交流成绩表均缺失，
-        // 说明这不是成绩页 —— 最常见是半失效会话下 jwc 返回 200 的业务壳页
-        // （JwcResponseGuard 只能识别登录页形态，拦不住这种）。之前静默解析成
-        // 「空 meta + 0 条成绩」还会被 GradeRepository 写进缓存，用户看到的是
-        // 无提示的空成绩单。抛 Decode 让 UI 走错误态、缓存保持未污染。
-        // 暂无成绩（大一新生）时 lblMsg 仍在；只有交流成绩的页面也能正常解析。
-        if (doc.selectFirst("[id$=_lblMsg]") == null &&
-            doc.selectFirst("table[id$=_dgContent]") == null &&
-            exchangeTables.isEmpty()
-        ) {
-            throw JwcException(
-                JwcError.Decode("成绩页缺少个人信息与成绩表锚点，可能是会话半失效返回的壳页面"),
-                "成绩页加载异常，请下拉刷新重试；若持续出现请重新登录",
-            )
-        }
+        PageGuard.requireBusinessPage(
+            doc = doc,
+            pageName = "成绩",
+            anchorFound = doc.selectFirst("[id$=_lblMsg]") != null ||
+                doc.selectFirst("table[id$=_dgContent]") != null ||
+                exchangeTables.isNotEmpty(),
+        )
         val meta = parseMeta(doc)
-        val grades = parseGrades(doc) + exchangeTables.flatMapIndexed { index, table ->
-            parseExchangeGrades(table, index)
-        }
+        val regular = parseGrades(doc)
+        val exchange = exchangeTables.mapIndexed { index, table -> parseExchangeGrades(table, index) }
+        val grades = regular.grades + exchange.flatMap { it.grades }
         // groupBy 保留遍历顺序，等同于教务系统的显示顺序（最新学期在前）。
         val semesters = grades.groupBy { it.semester }
             .map { (sem, list) -> SemesterSummary(sem, list) }
-        return Parsed(meta, semesters)
+        return PageParse(Parsed(meta, semesters), skipWarnings(regular.skipped + exchange.sumOf { it.skipped }))
     }
+
+    /** 解析中"整行被丢弃"的行数。课堂/交流两张表合并成一句汇总，避免提示刷屏。 */
+    private fun skipWarnings(skipped: Int): List<String> =
+        if (skipped > 0) listOf("成绩页有 $skipped 行未能解析，列表可能不完整") else emptyList()
+
+    /** 解析出的条目 + 被丢弃的行数（给 [parsePage] 汇总告警用）。 */
+    private data class GradeRows(val grades: List<Grade>, val skipped: Int = 0)
 
     private fun parseMeta(doc: Document): StudentMeta {
         val span = doc.selectFirst("[id$=_lblMsg]") ?: return StudentMeta()
@@ -97,12 +105,14 @@ object GradePage {
         }
     }
 
-    private fun parseGrades(doc: Document): List<Grade> {
+    private fun parseGrades(doc: Document): GradeRows {
         val rows = doc.select("table[id$=_dgContent] > tbody > tr, table[id$=_dgContent] > tr")
         var currentSemester: String? = null
+        var skipped = 0
         val results = mutableListOf<Grade>()
         for (row in rows) {
             val cells = row.children().filter { it.tagName() == "td" }
+            if (cells.size == 1 && (cells[0].attr("colspan").toIntOrNull() ?: 1) > 1) continue
             if (cells.isEmpty()) continue
             // 跳过表头：第一列在表头是"考试时间"
             if (cells[0].text().trim() == "考试时间") continue
@@ -111,9 +121,15 @@ object GradePage {
             val offset: Int = when (cells.size) {
                 8 -> { currentSemester = normalizeSemester(cleanText(cells[0])); 1 }
                 7 -> 0
-                else -> continue
+                // 列数不符：教务网改模板 / 半截响应。丢弃但计入告警，别让成绩静默变少。
+                else -> { skipped++; continue }
             }
-            val sem = currentSemester ?: continue
+            // 7 列行前面没有 8 列首行（学期未知）时无法归属，同样计入丢弃
+            val sem = currentSemester
+            if (sem == null) {
+                skipped++
+                continue
+            }
             val code = cleanText(cells[offset + 0])
             val name = cleanText(cells[offset + 1])
             val credit = cleanText(cells[offset + 2]).toFloatOrNull() ?: 0f
@@ -134,7 +150,7 @@ object GradePage {
                 remark = remark,
             )
         }
-        return results
+        return GradeRows(results, skipped)
     }
 
     private val exchangeHeaders = listOf("学期名称", "学校", "课程名称", "学分", "成绩")
@@ -159,9 +175,10 @@ object GradePage {
 
     private data class SpannedCell(val text: String, val rowsLeft: Int)
 
-    private fun parseExchangeGrades(table: ExchangeTable, tableIndex: Int): List<Grade> {
+    private fun parseExchangeGrades(table: ExchangeTable, tableIndex: Int): GradeRows {
         val headers = rowCells(table.rows[table.headerIndex]).map(::headerText)
         val spans = mutableMapOf<Int, SpannedCell>()
+        var skipped = 0
         val results = mutableListOf<Grade>()
         for ((rowIndex, row) in table.rows.withIndex().drop(table.headerIndex + 1)) {
             val cells = rowCells(row)
@@ -169,7 +186,7 @@ object GradePage {
                 spans.clear()
                 continue
             }
-            // colspan 行是说明/合计/空态，不能当成课程。
+            // colspan 行是说明/合计/空态，不能当成课程（也不是"解析失败"，不计入告警）。
             if (cells.isEmpty() || cells.any { (it.attr("colspan").toIntOrNull() ?: 1) != 1 }) continue
             val values = MutableList(headers.size) { "" }
             var cellIndex = 0
@@ -191,13 +208,18 @@ object GradePage {
                     if (rowspan > 1) spans[column] = SpannedCell(values[column], rowspan - 1)
                 }
             }
-            if (!complete || cellIndex != cells.size) continue
+            // 列数对不上表头：整行丢弃并计入告警
+            if (!complete || cellIndex != cells.size) { skipped++; continue }
             fun value(header: String): String = values[headers.indexOf(header)]
             val semester = normalizeSemester(value("学期名称"))
             val school = value("学校")
             val name = value("课程名称")
-            val credit = value("学分").toFloatOrNull() ?: continue
-            if (semester.isBlank() || name.isBlank()) continue
+            val credit = value("学分").toFloatOrNull()
+            if (credit == null) {
+                skipped++
+                continue
+            }
+            if (semester.isBlank() || name.isBlank()) { skipped++; continue }
             results += Grade(
                 // 交流课没有课程号，源前缀和表/行序号保证同名课程也不会产生重复列表 key。
                 id = "exchange-$semester-$school-$name-$tableIndex-$rowIndex",
@@ -210,7 +232,7 @@ object GradePage {
                 exchangeSchool = school,
             )
         }
-        return results
+        return GradeRows(results, skipped)
     }
 
     private fun normalizeSemester(text: String): String =

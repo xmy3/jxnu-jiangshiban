@@ -116,9 +116,11 @@ class TodayScheduleWidget : GlanceAppWidget() {
             } else {
                 // 假期态：今天不在本学期任何教学周内（寒暑假 / 未开学）时不再显示
                 // 「今天没课」，改为假期问候 + 开学倒计时（下学期开学日存在快照里）。
-                val phase = if (snapshot.hasSemesterStart) {
+                // 周坐标取快照里"生效的第 1 周周一"（用户可在 App 内校正）；未校正时由名义
+                // 开学日对齐推算。必须与课表页同一套，否则 widget 的「第 N 周」会差一周。
+                val phase = if (snapshot.hasSemesterStart || snapshot.hasWeekOneMonday) {
                     SemesterPhase.at(
-                        LocalDate.ofEpochDay(snapshot.semesterStartEpochDay),
+                        snapshot.weekOneMondayDate,
                         if (snapshot.totalWeeks > 0) snapshot.totalWeeks else 18,
                         today,
                     )

@@ -48,10 +48,15 @@ object AcademicCalendar {
         return adjustment.sourceDate
     }
 
-    fun adjustmentsForWeek(semesterStart: LocalDate?, week: Int): List<CalendarAdjustment> {
+    fun adjustmentsForWeek(
+        semesterStart: LocalDate?,
+        week: Int,
+        weekOneMonday: LocalDate? = null,
+    ): List<CalendarAdjustment> {
         if (semesterStart == null || week < 1) return emptyList()
         val adjustments = adjustmentsBySemester[semesterStart] ?: return emptyList()
-        val monday = SemesterPhase.weekOneMonday(semesterStart).plusWeeks(week.toLong() - 1)
+        val monday = (weekOneMonday ?: SemesterPhase.weekOneMonday(semesterStart))
+            .plusWeeks(week.toLong() - 1)
         return (0L..6L).mapNotNull { adjustments[monday.plusDays(it)] }
     }
 
@@ -59,12 +64,18 @@ object AcademicCalendar {
      * 结果已经按源教学周过滤，调用方无需再用显示周过滤 [Course.weeks]。
      * 补课只改显示列 [Course.weekday]，保留 id、weeks 等原值供详情和周次编辑使用。
      */
-    fun coursesForWeek(courses: List<Course>, semesterStart: LocalDate?, week: Int): List<Course> {
+    fun coursesForWeek(
+        courses: List<Course>,
+        semesterStart: LocalDate?,
+        week: Int,
+        weekOneMonday: LocalDate? = null,
+    ): List<Course> {
         if (week < 1 || courses.isEmpty()) return emptyList()
-        if (semesterStart == null || adjustmentsForWeek(semesterStart, week).isEmpty()) {
+        if (semesterStart == null || adjustmentsForWeek(semesterStart, week, weekOneMonday).isEmpty()) {
             return courses.filter { it.isInWeek(week) }
         }
-        val firstMonday = SemesterPhase.weekOneMonday(semesterStart)
+        // 学期身份用于查固定日期的校历；用户校正值只用于计算教学周，不能代替身份键。
+        val firstMonday = weekOneMonday ?: SemesterPhase.weekOneMonday(semesterStart)
         val monday = firstMonday.plusWeeks(week.toLong() - 1)
         return (0L..6L).flatMap { offset ->
             val actualDate = monday.plusDays(offset)

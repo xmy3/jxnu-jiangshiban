@@ -1,5 +1,6 @@
 package cn.jxnu.nvzhuanban.ui.navigation
 
+import android.content.pm.ApplicationInfo
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -25,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,14 +52,17 @@ import cn.jxnu.nvzhuanban.NvzhuanbanApp
 import cn.jxnu.nvzhuanban.R
 import cn.jxnu.nvzhuanban.data.model.AuthState
 import cn.jxnu.nvzhuanban.data.network.SessionEvents
+import cn.jxnu.nvzhuanban.data.network.ParseWarnings
 import cn.jxnu.nvzhuanban.data.repository.AuthRepository
 import cn.jxnu.nvzhuanban.data.storage.AnnouncementUnreadState
+import cn.jxnu.nvzhuanban.ui.components.rememberTransientErrorSnackbar
 import cn.jxnu.nvzhuanban.ui.screens.announcement.AnnouncementDetailScreen
 import cn.jxnu.nvzhuanban.ui.screens.announcement.AnnouncementScreen
 import cn.jxnu.nvzhuanban.ui.screens.calendar.CalendarDocumentScreen
 import cn.jxnu.nvzhuanban.ui.screens.calendar.CalendarScreen
 import cn.jxnu.nvzhuanban.ui.screens.classroom.ClassroomScreen
 import cn.jxnu.nvzhuanban.ui.screens.courseoffering.CourseOfferingScreen
+import cn.jxnu.nvzhuanban.ui.screens.debug.DebugToolsScreen
 import cn.jxnu.nvzhuanban.ui.screens.exams.ExamsScreen
 import cn.jxnu.nvzhuanban.ui.screens.grades.GradesScreen
 import cn.jxnu.nvzhuanban.ui.screens.login.LoginScreen
@@ -83,6 +88,8 @@ object Routes {
     const val TRAINING_PLAN = "training_plan"
     const val TRAINING_PLAN_SEARCH = "training_plan_search"
     const val CALENDAR = "calendar"
+    /** 开发者工具（仅调试包有入口，见 ProfileSettingsSection 的 showDebugTools）。 */
+    const val DEBUG_TOOLS = "debug_tools"
 
     /**
      * 校历 PDF 的 app 内查看页。url 是完整 https 文件地址（含 `:/`），title 用作顶栏标题，
@@ -228,6 +235,11 @@ fun AppNav() {
     val authState by authRepo.state.collectAsStateWithLifecycle()
     val hasAnnouncementUnread by AnnouncementUnreadState.hasUnread
         .collectAsStateWithLifecycle(initialValue = false)
+    // 解析告警订阅 + 调试入口开关（本项目未启用 BuildConfig，直接读 manifest 的 debuggable 标志）。
+    val parseWarningsHost = rememberTransientErrorSnackbar(ParseWarnings.messages)
+    val debuggable = remember {
+        (app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    }
 
     // 启动时（Splash 屏 + 上面 sessionReady gate 已经等过 tryRestoreSession）：
     //   已登录 → 直接进课表
@@ -278,6 +290,9 @@ fun AppNav() {
     }
 
     Scaffold(
+        // 解析告警（成绩/考试页「N 行未能解析」）统一在这里弹一次；解析在 IO 线程，
+        // 通道是 DROP_OLDEST 的 SharedFlow，永不阻塞。
+        snackbarHost = { SnackbarHost(parseWarningsHost) },
         bottomBar = {
             if (showBottomBar) {
                 BottomNav(
@@ -491,7 +506,14 @@ fun AppNav() {
                     onOpenPeopleSearch = { nav.navigate(Routes.PEOPLE_SEARCH) },
                     onOpenCalendar = { nav.navigate(Routes.CALENDAR) },
                     onOpenCourseOffering = { nav.navigate(Routes.courseOffering()) },
+                    showDebugTools = debuggable,
+                    onOpenDebugTools = { nav.navigate(Routes.DEBUG_TOOLS) },
                 )
+            }
+            if (debuggable) {
+                composable(Routes.DEBUG_TOOLS) {
+                    DebugToolsScreen(onBack = { nav.popBackStack() })
+                }
             }
             composable(
                 route = Routes.ANNOUNCEMENT_DETAIL,

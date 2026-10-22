@@ -38,6 +38,9 @@ object CalendarPage {
         // 一旦 jwc 用了相对路径（如 `Jxzl_20260901.pdf`），entry.url 就没有 scheme，
         // 后续 Intent.ACTION_VIEW + Uri.parse 会 resolve 不到任何 Activity。
         val doc = Jsoup.parse(html, baseUri)
+        // 空页守卫：真实索引页永远带 `ul.list-group`（几十条学年链接）。连它都没有说明拿到的是
+        // 半失效会话 / 站点改版后的壳页 —— 返回空列表会让 UI 显示"暂无校历"。
+        PageGuard.requireBusinessPage(doc, "校历", doc.selectFirst("ul.list-group") != null)
         val results = mutableListOf<CalendarEntry>()
         // 限定 ul.list-group 范围，避免扫到页面底部插件注入的 a 标签
         for (a in doc.select("ul.list-group a[href]")) {

@@ -5,7 +5,6 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import cn.jxnu.nvzhuanban.NvzhuanbanApp
 import cn.jxnu.nvzhuanban.data.model.AlertDiff
-import cn.jxnu.nvzhuanban.data.model.AuthState
 import cn.jxnu.nvzhuanban.data.model.Exam
 import cn.jxnu.nvzhuanban.data.model.ExamReminderPlan
 import cn.jxnu.nvzhuanban.data.model.Grade
@@ -48,8 +47,7 @@ class GradeExamWatchWorker(
         if (!AlertPrefs.anyEnabled) return Result.success()
         val app = applicationContext as? NvzhuanbanApp ?: return Result.success()
 
-        val sessionReady = runCatching { app.sessionRestore.await() }.getOrDefault(false)
-        if (!sessionReady || AuthRepository.instance.state.value !is AuthState.LoggedIn) {
+        if (!canRunAlertCheck(app.sessionRestore) { AuthRepository.instance.state.value }) {
             AlertPrefs.markChecked(System.currentTimeMillis(), AlertCheckResult.LOGIN_REQUIRED)
             return Result.success()
         }

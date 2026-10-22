@@ -8,6 +8,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantReadWriteLock
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.concurrent.read
 import kotlin.concurrent.write
 
@@ -180,6 +182,112 @@ class PersistentCookieJar internal constructor(filesDir: File) : CookieJar {
         }
     }
 
+    /**
+     * 把内存里全部 cookie 导出成 JSON 数组供调试页使用（字段与 [serializeCookieLine] 同源：
+     * name / value / domain / path / expiresAt / secure / httpOnly / hostOnly）。
+     *
+     * 用途：抓教务网页数据排障时，把本机登录态原样搬到另一台设备 / 另一次安装复现问题。
+     * **含 value（登录凭据）**，只允许进剪贴板给本机调试用：不要落日志、不要外传。
+     *
+     * 只取快照，不做过期清理（有副作用的是 [loadForRequest]），所以导出的条数与 [summary] 一致。
+     */
+    fun exportJson(): String {
+        val snapshot: List<Cookie> = lock.read { byDomain.values.flatMap { it.toList() } }
+        val array = JSONArray()
+        snapshot.forEach { c ->
+            array.put(
+                JSONObject()
+                    .put("name", c.name)
+                    .put("value", c.value)
+                    .put("domain", c.domain)
+                    .put("path", c.path)
+                    .put("expiresAt", c.expiresAt)
+                    .put("secure", c.secure)
+                    .put("httpOnly", c.httpOnly)
+                    .put("hostOnly", c.hostOnly),
+            )
+        }
+        return array.toString()
+    }
+
+    /**
+     * 用 [exportJson] 产出的 JSON 数组**整体覆盖**内存里的 cookie，返回实际写入的条数。
+     *
+     * 语义刻意是"覆盖"而不是"合并"：调试页导入的目的是把另一台设备的登录态完整复现到本机，
+     * 残留的旧会话（同 name 不同 path 等）会让复现结果不可信。写入后与 [clearForHost] 一样
+     * 显式 resume（清掉 [clearAll] 留下的 stopped 栅门）并落盘，否则下次冷启动又回到旧状态。
+     *
+     * - 结构不合法（不是 JSON 数组 / 元素缺 name、domain / domain 非法）→ 抛
+     *   [IllegalArgumentException]，**不动现有内存状态**。
+     * - 空数组同样视为非法：一条合法登录态都没有的导入只会把可用会话清空，清空请显式用 [clearAll]。
+     * - 非 `*.jxnu.edu.cn` 的 domain 丢弃（与 [saveFromResponse] / [loadFromDisk] 同口径），不计入返回值。
+     */
+    fun importJson(json: String): Int {
+        val array = runCatching { JSONArray(json) }
+            .getOrElse { throw IllegalArgumentException(INVALID_JSON_MESSAGE) }
+        if (array.length() == 0) throw IllegalArgumentException(INVALID_JSON_MESSAGE)
+        val parsed = ArrayList<Cookie>(array.length())
+        for (i in 0 until array.length()) {
+            val o = array.optJSONObject(i) ?: throw IllegalArgumentException(INVALID_JSON_MESSAGE)
+            val name = o.optString("name", "")
+            val domain = o.optString("domain", "")
+            if (name.isBlank() || domain.isBlank()) throw IllegalArgumentException(INVALID_JSON_MESSAGE)
+            val path = o.optString("path", "/").ifBlank { "/" }
+            // 缺 expiresAt 的 JSON 按"会话 cookie"（远期）处理；显式给 0 / 负数视为非法 ——
+            // OkHttp 的 Cookie.Builder.expiresAt 对非正值会抛异常，这里提前给出统一文案。
+            val expiresAt = o.optLong("expiresAt", Long.MAX_VALUE)
+            if (expiresAt <= 0L) throw IllegalArgumentException(INVALID_JSON_MESSAGE)
+            val cookie = runCatching {
+                Cookie.Builder()
+                    .name(name)
+                    .value(o.optString("value", ""))
+                    .path(path)
+                    .expiresAt(expiresAt)
+                    .apply {
+                        if (o.optBoolean("hostOnly", true)) hostOnlyDomain(domain) else domain(domain)
+                        if (o.optBoolean("secure", false)) secure()
+                        if (o.optBoolean("httpOnly", false)) httpOnly()
+                    }
+                    .build()
+            }.getOrElse { throw IllegalArgumentException(INVALID_JSON_MESSAGE) }
+            parsed.add(cookie)
+        }
+        // 全部校验通过后才动内存：中途失败不会留下"清了一半"的 jar（保存了半份 session 比没有更难查）。
+        val accepted = parsed.filter { it.domain.isJxnuHost() }
+        if (accepted.isEmpty()) throw IllegalArgumentException(INVALID_JSON_MESSAGE)
+        lock.write {
+            byDomain.clear()
+            accepted.forEach { c -> byDomain.getOrPut(c.domain) { mutableListOf() }.add(c) }
+            // 锁序与 clearForHost 一致（lock → persistLock），避免与后台落盘线程交叉死锁。
+            synchronized(persistLock) {
+                stopped = false
+                persistGeneration++
+            }
+        }
+        persistAsync()
+        return accepted.size
+    }
+
+    /**
+     * cookie 的只读摘要（**不含 value**），供调试页按 host 分组展示。
+     * 不调用 [loadForRequest]，因此不会顺带清理过期项：过期与否由 [CookieSummary.expired] 标出。
+     */
+    fun summary(): List<CookieSummary> {
+        val now = System.currentTimeMillis()
+        val pairs: List<Pair<String, Cookie>> = lock.read {
+            byDomain.entries.flatMap { (domain, list) -> list.map { domain to it } }
+        }
+        return pairs
+            .map { (domain, c) ->
+                CookieSummary(
+                    host = c.domain.ifBlank { domain },
+                    name = c.name,
+                    expired = c.expiresAt <= now,
+                )
+            }
+            .sortedWith(compareBy({ it.host }, { it.name }))
+    }
+
     private fun loadFromDisk() {
         if (!cookieFile.exists()) return
         runCatching {
@@ -333,3 +441,20 @@ internal fun cookieAffectsHost(cookie: Cookie, host: String): Boolean {
         target == cd || target.endsWith(".$cd")
     }
 }
+
+/**
+ * 调试页展示用的 cookie 摘要：只有 host / name / 是否已过期，**不带 value**，
+ * 所以屏幕截图和排障日志里都不会出现登录凭据。
+ */
+data class CookieSummary(
+    val host: String,
+    val name: String,
+    val expired: Boolean,
+)
+
+/**
+ * [PersistentCookieJar.importJson] 的统一错误文案：结构不合法的 cookie JSON 一律抛
+ * `IllegalArgumentException(本文案)`，UI 可原样展示给用户。放在文件级（而非实例）因为
+ * 调试页拿到异常后只关心 message。
+ */
+private const val INVALID_JSON_MESSAGE = "Cookie JSON 格式不正确"

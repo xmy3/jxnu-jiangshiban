@@ -14,26 +14,51 @@ import java.util.Locale
  *   课程号 | 课程名称标识 | 学号 | 考试时间 | 教室号 | 座位号 | 备注
  *
  * 考试时间格式：`yyyy-MM-dd HH:mm:ss`。教务系统不提供考试时长，统一按 [Exam] 默认 120 分钟。
+ *
+ * 空页守卫（[PageGuard]）：真实页面即便本学期没有考试也仍渲染 `_ctl1_lblTitle`（「考试安排」）/
+ * `_ctl1_lblMsg` 与空的 `_ctl1_dgContent` 表，三者任一存在即视为业务页；三者全无说明拿到的是
+ * 半失效会话的壳页面，交给 [PageGuard] 抛错而不是静默返回空列表。
  */
 object ExamPage {
 
     // 显式 Locale.ROOT 避免阿拉伯/孟加拉等数字本地化导致解析失败 —— 服务端永远发 ASCII。
     private val DT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ROOT)
 
-    fun parse(html: String): List<Exam> {
+    fun parse(html: String): List<Exam> = parsePage(html).value
+
+    /** 带解析告警的入口；[parse] 委托给它，返回的考试列表与旧行为逐条一致。 */
+    fun parsePage(html: String): PageParse<List<Exam>> {
         val doc = Jsoup.parse(html)
+        PageGuard.requireBusinessPage(
+            doc = doc,
+            pageName = "考试安排",
+            anchorFound = doc.selectFirst("table[id$=_dgContent]") != null ||
+                doc.selectFirst("[id$=_lblTitle]") != null ||
+                doc.selectFirst("[id$=_lblMsg]") != null,
+        )
         val rows = doc.select("table[id$=_dgContent] > tbody > tr, table[id$=_dgContent] > tr")
         val results = mutableListOf<Exam>()
+        var skipped = 0
         for (row in rows) {
             val cells = row.children().filter { it.tagName() == "td" }
-            if (cells.size != 7) continue
+            if (cells.isEmpty()) continue
+            if (cells.size == 1 && (cells[0].attr("colspan").toIntOrNull() ?: 1) > 1) continue
+            if (cells.size != 7) {
+                // 表头以外的列数不符行 = 模板变化 / 半截响应，整行丢弃并计入告警
+                skipped++
+                continue
+            }
             if (cells[0].text().trim() == "课程号") continue  // 表头
 
             val code = cleanText(cells[0])
             val name = cleanText(cells[1])
             // cells[2] 是学号，每行都一样，忽略
             val rawTime = cleanText(cells[3])
-            val time = parseTime(rawTime) ?: continue
+            val time = parseTime(rawTime)
+            if (time == null) {
+                skipped++
+                continue
+            }
             val location = cleanText(cells[4])
             val seat = cleanText(cells[5]).takeIf { it.isNotBlank() }
             val remark = cleanText(cells[6]).takeIf { it.isNotBlank() }
@@ -49,12 +74,13 @@ object ExamPage {
                 remark = remark,
             )
         }
-        return results
+        val warnings = if (skipped > 0) listOf("考试安排页有 $skipped 行未能解析，列表可能不完整") else emptyList()
+        return PageParse(results, warnings)
     }
 
     private fun parseTime(s: String): LocalDateTime? =
         runCatching { LocalDateTime.parse(s, DT_FMT) }.getOrNull()
 
     private fun cleanText(el: org.jsoup.nodes.Element): String =
-        el.text().replace(' ', ' ').trim()
+        el.text().replace('\u00A0', ' ').trim()
 }

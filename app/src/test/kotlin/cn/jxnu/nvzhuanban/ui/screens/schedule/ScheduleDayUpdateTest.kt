@@ -30,4 +30,15 @@ class ScheduleDayUpdateTest {
         assertEquals(2, advanced.state.selectedWeek)
         assertEquals(7, advanced.baselineWeek)
     }
+
+    @Test
+    fun `offline rollover uses corrected week while preserving semester identity`() {
+        val corrected = sundayState.copy(
+            weekOneMonday = LocalDate.of(2026, 9, 7), selectedWeek = 5, currentWeek = 5,
+        )
+        val advanced = advanceOfflineScheduleDay(corrected, 5, monday)
+        assertEquals(6, advanced.state.currentWeek)
+        assertEquals(6, advanced.state.selectedWeek)
+        assertEquals(sundayState.semesterStart, advanced.state.semesterStart)
+    }
 }

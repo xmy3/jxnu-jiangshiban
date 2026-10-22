@@ -17,13 +17,34 @@ import org.jsoup.nodes.Element
  */
 object MakeupExamPage {
 
-    fun parse(html: String): List<MakeupExam> {
+    fun parse(html: String): List<MakeupExam> = parsePage(html).value
+
+    /**
+     * 带解析告警的入口；[parse] 委托给它，结果与旧行为逐条一致。
+     *
+     * 空页守卫（[PageGuard]）：真实页面即便本学期没有补缓考，`_ctl6_lblMsg`（提示行）与
+     * 空的 `_ctl6_dgContent` 表仍在，任一存在即视为业务页。
+     */
+    fun parsePage(html: String): PageParse<List<MakeupExam>> {
         val doc = Jsoup.parse(html)
+        PageGuard.requireBusinessPage(
+            doc = doc,
+            pageName = "补缓考",
+            anchorFound = doc.selectFirst("table[id$=_dgContent]") != null ||
+                doc.selectFirst("[id$=_lblMsg]") != null,
+        )
         val rows = doc.select("table[id$=_dgContent] > tbody > tr, table[id$=_dgContent] > tr")
         val results = mutableListOf<MakeupExam>()
+        var skipped = 0
         for (row in rows) {
             val cells = row.children().filter { it.tagName() == "td" }
-            if (cells.size != 13) continue
+            if (cells.isEmpty()) continue
+            if (cells.size == 1 && (cells[0].attr("colspan").toIntOrNull() ?: 1) > 1) continue
+            if (cells.size != 13) {
+                // 列数不符 = 模板变化 / 半截响应，整行丢弃并计入告警
+                skipped++
+                continue
+            }
             if (cells[0].text().trim() == "教学区名称") continue  // 表头
 
             val campus = cleanText(cells[0])
@@ -33,7 +54,10 @@ object MakeupExamPage {
             val studentId = cleanText(cells[4])
             val courseCode = cleanText(cells[5])
             val courseName = cleanText(cells[6])
-            if (courseCode.isBlank() || courseName.isBlank()) continue
+            if (courseCode.isBlank() || courseName.isBlank()) {
+                skipped++
+                continue
+            }
             val courseType = cleanText(cells[7])
             val managingDept = cleanText(cells[8])
             val location = nullIfBlank(cells[9])
@@ -59,7 +83,8 @@ object MakeupExamPage {
                 remark = remark,
             )
         }
-        return results
+        val warnings = if (skipped > 0) listOf("补缓考页有 $skipped 行未能解析，列表可能不完整") else emptyList()
+        return PageParse(results, warnings)
     }
 
     /** `&nbsp;` 在 `text()` 后是不间断空格 ` `；先归一为普通空格再判空。 */

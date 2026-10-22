@@ -3,6 +3,7 @@
 import cn.jxnu.nvzhuanban.data.model.TestGradeReport
 import cn.jxnu.nvzhuanban.data.network.JwcClient
 import cn.jxnu.nvzhuanban.data.network.JxnuUrls
+import cn.jxnu.nvzhuanban.data.network.ParseWarnings
 import cn.jxnu.nvzhuanban.data.network.pages.TestGradePage
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,7 +36,10 @@ class TestGradeRepository {
 
     private suspend fun fetchNow(): TestGradeReport {
         val html = JwcClient.getHtmlAuth(JxnuUrls.PAGE_TEST_GRADE, "考试出分页返回空响应")
-        return TestGradePage.parse(html)
+        val page = TestGradePage.parsePage(html)
+        // 只在真正拉网络时上报；缓存命中不重复弹同一句告警
+        page.warnings.forEach(ParseWarnings::report)
+        return page.value
     }
 
     companion object {

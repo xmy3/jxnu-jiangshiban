@@ -34,47 +34,87 @@ import org.jsoup.nodes.Element
  */
 object TestGradePage {
 
-    fun parse(html: String): TestGradeReport {
+    fun parse(html: String): TestGradeReport = parsePage(html).value
+
+    /**
+     * 带解析告警的入口；[parse] 委托给它，报告字段与旧行为完全一致。
+     *
+     * 空页守卫（[PageGuard]）：页面标题 `div.text-large`、顶部信息块 `blockquote.border-red`、
+     * 任意 `fieldset` 三者任一存在即视为业务页 —— 真实页面即便还没有出分，标题与 blockquote 也在。
+     */
+    fun parsePage(html: String): PageParse<TestGradeReport> {
         val doc = Jsoup.parse(html)
         val pageTitle = doc.selectFirst("div.text-large")?.text()?.trim().orEmpty()
         val blockquote = doc.selectFirst("blockquote.border-red")
+        val fieldsets = doc.select("fieldset")
+        PageGuard.requireBusinessPage(
+            doc = doc,
+            pageName = "考试出分",
+            anchorFound = pageTitle.isNotBlank() || blockquote != null || fieldsets.isNotEmpty(),
+        )
         val studentId = blockquote?.let { pick(it.text(), "学号") }
         val studentName = blockquote?.let { pick(it.text(), "姓名") }
         val semesterDate = blockquote?.let { pick(it.text(), "考试学期") }
         val disclaimer = blockquote?.selectFirst("p.text-sub")?.text()
             ?.removePrefix("注：")?.removePrefix("注:")?.trim()
 
-        val groups = doc.select("fieldset").mapNotNull { parseGroup(it) }
-
-        return TestGradeReport(
-            pageTitle = pageTitle,
-            studentId = studentId,
-            studentName = studentName,
-            semesterDate = semesterDate,
-            disclaimer = disclaimer,
-            groups = groups,
+        var skipped = 0
+        val groups = fieldsets.mapNotNull { fieldset ->
+            val parsed = parseGroup(fieldset)
+            skipped += parsed.skipped
+            parsed.group
+        }
+        val warnings = if (skipped > 0) listOf("考试出分页有 $skipped 行未能解析，列表可能不完整") else emptyList()
+        return PageParse(
+            TestGradeReport(
+                pageTitle = pageTitle,
+                studentId = studentId,
+                studentName = studentName,
+                semesterDate = semesterDate,
+                disclaimer = disclaimer,
+                groups = groups,
+            ),
+            warnings,
         )
     }
 
-    private fun parseGroup(fieldset: Element): TestGradeGroup? {
+    /** 一个 fieldset 的解析结果 + 其中被丢弃的行数（给 [parsePage] 汇总告警用）。 */
+    private class GroupResult(val group: TestGradeGroup?, val skipped: Int = 0)
+
+    private class GradeRows(val grades: List<TestGrade>, val skipped: Int = 0)
+
+    private fun parseGroup(fieldset: Element): GroupResult {
         val title = fieldset.selectFirst("legend")?.text()?.trim().orEmpty()
-        val table = fieldset.selectFirst("table") ?: return null
+        val table = fieldset.selectFirst("table") ?: return GroupResult(null)
         val grades = parseGrades(table)
-        if (grades.isEmpty()) return null
-        return TestGradeGroup(title = title, grades = grades)
+        if (grades.grades.isEmpty()) return GroupResult(null, grades.skipped)
+        return GroupResult(TestGradeGroup(title = title, grades = grades.grades), grades.skipped)
     }
 
-    private fun parseGrades(table: Element): List<TestGrade> {
+    private fun parseGrades(table: Element): GradeRows {
         val rows = table.select("> tbody > tr, > tr")
         val results = mutableListOf<TestGrade>()
+        var skipped = 0
         for (row in rows) {
             val cells = row.children().filter { it.tagName() == "td" }
-            // 表头行只有 th 没有 td；占位行 `<td colspan="10">没有记录</td>` 只有 1 列且非数字。
-            if (cells.size < 11) continue
-            val seq = cleanText(cells[0]).toIntOrNull() ?: continue
+            // 表头行只有 th 没有 td。
+            if (cells.isEmpty()) continue
+            if (cells.size < 11) {
+                // `<td colspan="10">没有记录</td>` 是合法空态，不算解析失败；其余是列数不符的丢行。
+                if (!isPlaceholderRow(cells)) skipped++
+                continue
+            }
+            val seq = cleanText(cells[0]).toIntOrNull()
+            if (seq == null) {
+                skipped++
+                continue
+            }
             val code = cleanText(cells[1])
             val name = cleanText(cells[2])
-            if (code.isBlank() || name.isBlank()) continue
+            if (code.isBlank() || name.isBlank()) {
+                skipped++
+                continue
+            }
             results += TestGrade(
                 id = "$seq-$code",
                 sequenceNo = seq,
@@ -90,8 +130,12 @@ object TestGradePage {
                 examStatus = nullIfBlank(cells[10]),
             )
         }
-        return results
+        return GradeRows(results, skipped)
     }
+
+    /** 单格且带 colspan 的占位行（"没有记录" / "暂无数据"）：合法空态，不进告警。 */
+    private fun isPlaceholderRow(cells: List<Element>): Boolean =
+        cells.size == 1 && (cells[0].attr("colspan").toIntOrNull() ?: 1) > 1
 
     /** 用 `&nbsp;` 占位的空单元格在 `text()` 之后是 ` `，先归一为普通空格再判空。 */
     private fun cleanText(el: Element): String =

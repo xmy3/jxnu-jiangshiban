@@ -116,9 +116,11 @@ import cn.jxnu.nvzhuanban.data.model.ExamReminderPlan
 import cn.jxnu.nvzhuanban.data.repository.ExamRepository
 import cn.jxnu.nvzhuanban.data.repository.GraduationAuditRepository
 import cn.jxnu.nvzhuanban.data.repository.MakeupExamRepository
+import cn.jxnu.nvzhuanban.data.repository.ScheduleRepository
 import cn.jxnu.nvzhuanban.data.storage.AvatarPrefs
 import cn.jxnu.nvzhuanban.data.storage.AlertCheckResult
 import cn.jxnu.nvzhuanban.data.storage.AlertPrefs
+import cn.jxnu.nvzhuanban.data.storage.SemesterSettings
 import cn.jxnu.nvzhuanban.data.storage.ThemeMode
 import cn.jxnu.nvzhuanban.data.storage.ThemePrefs
 import cn.jxnu.nvzhuanban.data.work.AlertNotifier
@@ -141,6 +143,7 @@ import cn.jxnu.nvzhuanban.ui.widget.refreshTodayScheduleWidgets
 import cn.jxnu.nvzhuanban.ui.widget.requestPinTodayScheduleWidget
 import cn.jxnu.nvzhuanban.ui.widget.widgetExactAlarmState
 import kotlinx.coroutines.flow.first
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
 
 /** 官网首页即下载页（APK 与 GitHub Release 同包同 SHA）；更新弹窗与关于页共用。 */
@@ -238,6 +241,8 @@ internal fun ProfileLightweightListPreview() {
                         examReminderSubtitle = "未开启：不会提醒第二天的考试",
                         onExamReminderToggle = { showSampleNotice() },
                         onOpenTheme = { showThemeDialog = true }, onAddWidgetClick = showSampleNotice,
+                        semesterSubtitle = "第 1 周起 2026-03-02 · 共 18 周",
+                        onOpenSemesterSettings = {},
                         onExactAlarmClick = showSampleNotice,
                         onAboutClick = { showAboutDialog = true }, onCheckUpdate = showSampleNotice,
                         onLogoutClick = showSampleNotice,
@@ -278,6 +283,9 @@ fun ProfileScreen(
     onOpenPeopleSearch: () -> Unit,
     onOpenCalendar: () -> Unit,
     onOpenCourseOffering: () -> Unit,
+    /** 仅调试包为 true：设置区显示「开发者工具」入口（正式包不渲染）。 */
+    showDebugTools: Boolean = false,
+    onOpenDebugTools: () -> Unit = {},
     viewModel: ProfileViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -288,6 +296,21 @@ fun ProfileScreen(
     var showAboutDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
+    var showSemesterDialog by remember { mutableStateOf(false) }
+    // 保存/恢复后自增，让「学期与周次」副标题重新读仓库（内存值，无 IO）。
+    var semesterRevision by remember { mutableIntStateOf(0) }
+    val semesterSubtitle = remember(semesterRevision) {
+        val start = ScheduleRepository.instance.currentSemesterStart()
+        val monday = start?.let { SemesterSettings.weekOneMondayFor(it) }
+        val weeks = ScheduleRepository.instance.totalWeeks()
+        val corrected = SemesterSettings.overrideFor(start) != null
+        if (monday == null) {
+            "课表加载后可校正周次"
+        } else {
+            val formatted = monday.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+            "第 1 周起 $formatted · 共 $weeks 周" + if (corrected) "（已校正）" else ""
+        }
+    }
     var showWidgetDialog by remember { mutableStateOf(false) }
     val themeMode by ThemePrefs.themeMode.collectAsState()
     val dynamicColor by ThemePrefs.dynamicColor.collectAsState()
@@ -496,6 +519,10 @@ fun ProfileScreen(
                                 )
                             }
                         },
+                        semesterSubtitle = semesterSubtitle,
+                        onOpenSemesterSettings = { showSemesterDialog = true },
+                        showDebugTools = showDebugTools,
+                        onOpenDebugTools = onOpenDebugTools,
                         onOpenTheme = { showThemeDialog = true },
                         onAddWidgetClick = { showWidgetDialog = true },
                         onExactAlarmClick = {
@@ -585,6 +612,30 @@ fun ProfileScreen(
         )
     }
 
+    if (showSemesterDialog) {
+        val semesterStart = remember { ScheduleRepository.instance.currentSemesterStart() }
+        SemesterSettingsDialog(
+            semesterLabel = ScheduleRepository.instance.currentSemester(),
+            nominalStart = semesterStart,
+            schoolTotalWeeks = ScheduleRepository.instance.schoolTotalWeeks(),
+            savedOverride = SemesterSettings.overrideFor(semesterStart),
+            onDismiss = { showSemesterDialog = false },
+            onSave = { monday, weeks ->
+                if (semesterStart != null) {
+                    SemesterSettings.save(semesterStart, monday, weeks)
+                    semesterRevision++
+                    showSemesterDialog = false
+                    scope.launch { snackbarHostState.showSnackbar("已更新学期周次") }
+                }
+            },
+            onReset = {
+                semesterStart?.let { SemesterSettings.clear(it) }
+                semesterRevision++
+                showSemesterDialog = false
+                scope.launch { snackbarHostState.showSnackbar("已恢复默认周次") }
+            },
+        )
+    }
     if (showThemeDialog) {
         ThemeChoiceDialog(
             current = themeMode,

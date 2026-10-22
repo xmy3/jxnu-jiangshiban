@@ -17,6 +17,7 @@ import cn.jxnu.nvzhuanban.data.storage.AlertPrefs
 import cn.jxnu.nvzhuanban.data.storage.AvatarPrefs
 import cn.jxnu.nvzhuanban.data.storage.CourseOverridesStore
 import cn.jxnu.nvzhuanban.data.storage.EveningStudyStore
+import cn.jxnu.nvzhuanban.data.storage.SemesterSettings
 import cn.jxnu.nvzhuanban.data.storage.PeopleSearchHistoryStore
 import cn.jxnu.nvzhuanban.data.widget.WidgetSnapshotStore
 import cn.jxnu.nvzhuanban.data.work.AlertScheduler
@@ -373,6 +374,7 @@ class AuthRepository private constructor(
         clearRepositoryCaches()
         CourseOverridesStore.clearAll()
         EveningStudyStore.clearAll()
+        SemesterSettings.clearAll()
         PeopleSearchHistoryStore.clearAll()
         AnnouncementReadAnchor.clear()
         clearWidgetSnapshotOnSignOut()

@@ -7,6 +7,7 @@ import cn.jxnu.nvzhuanban.data.network.JwcClient
 import cn.jxnu.nvzhuanban.data.network.JwcError
 import cn.jxnu.nvzhuanban.data.network.JwcException
 import cn.jxnu.nvzhuanban.data.network.JxnuUrls
+import cn.jxnu.nvzhuanban.data.network.ParseWarnings
 import cn.jxnu.nvzhuanban.data.network.pages.CourseOfferingPage
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -62,7 +63,10 @@ class CourseOfferingRepository {
         }
         // POST 响应会重渲整个表单，刷新 donor 以取最新三件套；结构异常（拿不到 viewState）时保留旧 donor
         CourseOfferingPage.parseForm(html).takeIf { it.viewState.isNotEmpty() }?.let { donor = it }
-        CourseOfferingPage.parseResult(html)
+        val result = CourseOfferingPage.parseResultPage(html)
+        // 表头驱动的列错位告警交给 UI；结果本身原样返回，donor 缓存语义不变
+        result.warnings.forEach(ParseWarnings::report)
+        result.value
     }
 
     /** 退出登录时清空 donor。**无锁**（`@Volatile donor`），避免 repo.mutex ⇄ authMutex 跨锁死锁——见 GradeRepository.clearCache。 */

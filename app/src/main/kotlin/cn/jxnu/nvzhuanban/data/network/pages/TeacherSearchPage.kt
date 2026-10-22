@@ -31,6 +31,14 @@ object TeacherSearchPage {
 
     fun parse(html: String): Parsed {
         val doc = Jsoup.parse(html)
+        // 空页守卫：真实的「查无此人」页面仍有 `_ctl1_lblMsg`（提示行）与空的结果表；两者全无
+        // 说明拿到的是半失效会话的壳页 —— 静默返回空列表 + 空三件套会让检索一直"没有结果"。
+        PageGuard.requireBusinessPage(
+            doc = doc,
+            pageName = "教工检索",
+            anchorFound = doc.selectFirst("table[id$=_dgContent]") != null ||
+                doc.selectFirst("span[id$=_lblMsg]") != null,
+        )
         return Parsed(
             teachers = parseTeachers(doc),
             message = doc.selectFirst("span[id$=_lblMsg]")?.text()?.trim()?.takeIf { it.isNotEmpty() },
