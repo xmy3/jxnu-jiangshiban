@@ -3,10 +3,13 @@ package cn.jxnu.nvzhuanban.ui.components
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -15,6 +18,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import cn.jxnu.nvzhuanban.R
 import cn.jxnu.nvzhuanban.data.network.JwcClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -56,7 +66,27 @@ private fun decodeSampled(bytes: ByteArray): android.graphics.Bitmap? {
 private sealed interface ImageLoadState {
     data object Loading : ImageLoadState
     data class Success(val bitmap: ImageBitmap) : ImageLoadState
-    data object Failed : ImageLoadState
+    data class Failed(val retryOnResume: Boolean) : ImageLoadState
+}
+
+/** 将缓存与实际 IO 隔离，界面回归测试无需登录或访问教务网。 */
+internal interface RemoteImageLoader {
+    fun cached(url: String): ImageBitmap?
+    suspend fun load(url: String): ImageBitmap?
+}
+
+private object JwcRemoteImageLoader : RemoteImageLoader {
+    override fun cached(url: String): ImageBitmap? = decodedImageCache.get(url)
+
+    override suspend fun load(url: String): ImageBitmap? {
+        // fetch + decode 一起留在 IO 线程：通知里的长图截屏在主线程解码会卡帧。
+        // getBytesAuth 的装饰性请求失败策略不变：自动恢复 session，但绝不踢出登录。
+        val bitmap = withContext(Dispatchers.IO) {
+            decodeSampled(JwcClient.getBytesAuth(url, "图片返回空响应"))?.asImageBitmap()
+        }
+        if (bitmap != null) decodedImageCache.put(url, bitmap)
+        return bitmap
+    }
 }
 
 /**
@@ -78,8 +108,9 @@ private sealed interface ImageLoadState {
  *   HTML 宽高属性与真实位图不符时，代价只是位图落地那一刻的一次高度调整，
  *   而不是把加载完的图裁掉一截。
  *
- * 加载中显示 [fallback]；失败显示 [error]（未提供时回退 [fallback]，与旧行为一致）。
- * 需要「点按重试」时把一个计数状态传给 [retryKey]，递增即重触发下载。
+ * 加载中显示 [fallback]；失败显示 [error]（未提供时回退可点按重试的 [fallback]）。
+ * 瞬时网络故障有限退避，仍失败时返回前台会重试；成功图继续复用缓存。
+ * 自定义 [error] 可把计数状态传给 [retryKey]，递增即重触发下载。
  * [url] 变化或被置为 null 会清空当前图。
  */
 @Composable
@@ -93,30 +124,58 @@ fun RemoteJwcImage(
     placeholderModifier: Modifier? = null,
     error: (@Composable () -> Unit)? = null,
     fallback: @Composable () -> Unit,
+) = RemoteJwcImageContent(
+    url = url,
+    contentDescription = contentDescription,
+    modifier = modifier,
+    contentScale = contentScale,
+    retryKey = retryKey,
+    placeholderModifier = placeholderModifier,
+    error = error,
+    fallback = fallback,
+    loader = JwcRemoteImageLoader,
+)
+
+@Composable
+internal fun RemoteJwcImageContent(
+    url: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    retryKey: Any? = null,
+    placeholderModifier: Modifier? = null,
+    error: (@Composable () -> Unit)? = null,
+    fallback: @Composable () -> Unit,
+    loader: RemoteImageLoader,
 ) {
-    var state by remember(url) {
-        val cached = url?.let { decodedImageCache.get(it) }
+    var state by remember(url, loader) {
+        val cached = url?.let(loader::cached)
         mutableStateOf<ImageLoadState>(
             if (cached != null) ImageLoadState.Success(cached) else ImageLoadState.Loading
         )
     }
-    LaunchedEffect(url, retryKey) {
+    var localRetry by remember(url) { mutableIntStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, url, loader) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME &&
+                (state as? ImageLoadState.Failed)?.retryOnResume == true
+            ) {
+                localRetry++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(url, retryKey, localRetry, loader) {
         if (url.isNullOrBlank() || state is ImageLoadState.Success) return@LaunchedEffect
         state = ImageLoadState.Loading
-        // fetch + decode 一起留在 IO 线程：通知里的长图截屏在主线程解码会卡帧
-        val bmp = withContext(Dispatchers.IO) {
-            runCatching {
-                // getBytesAuth：session 失效时自动 reauth + 重放一次，避免头像加载失败把用户踢出
-                JwcClient.getBytesAuth(url, "图片返回空响应")
-            }.getOrNull()
-                ?.let(::decodeSampled)
-                ?.asImageBitmap()
-        }
+        val result = loadImageWithRetry { loader.load(url) }
+        val bmp = result.getOrNull()
         state = if (bmp != null) {
-            decodedImageCache.put(url, bmp)
             ImageLoadState.Success(bmp)
         } else {
-            ImageLoadState.Failed
+            ImageLoadState.Failed(result.exceptionOrNull()?.isRetryableImageFailure() == true)
         }
     }
     when (val s = state) {
@@ -131,10 +190,20 @@ fun RemoteJwcImage(
             )
         // loading / 失败：用 Box wrap 占位内容居中。placeholderModifier（缺省 modifier）决定占位框
         // 大小（调用方应提供 min 高度或宽高比，否则 fillMaxWidth 时 Box 会塌缩为 0 高）。
-        ImageLoadState.Failed ->
-            Box(modifier = placeholderModifier ?: modifier, contentAlignment = Alignment.Center) {
+        is ImageLoadState.Failed -> {
+            val failureDescription = stringResource(R.string.image_load_failed_retry)
+            val retryModifier = if (error == null) {
+                Modifier
+                    .semantics { stateDescription = failureDescription }
+                    .clickable(onClickLabel = stringResource(R.string.common_retry)) { localRetry++ }
+            } else Modifier
+            Box(
+                modifier = (placeholderModifier ?: modifier).then(retryModifier),
+                contentAlignment = Alignment.Center,
+            ) {
                 (error ?: fallback)()
             }
+        }
         ImageLoadState.Loading ->
             Box(modifier = placeholderModifier ?: modifier, contentAlignment = Alignment.Center) {
                 fallback()

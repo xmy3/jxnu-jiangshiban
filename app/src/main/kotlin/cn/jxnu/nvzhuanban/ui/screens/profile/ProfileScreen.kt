@@ -694,6 +694,14 @@ private fun UserCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             // 学生头像：默认关闭（隐私），点头像本身即可切换加载。开启后用 OkHttp + 应用
             // session cookie 取 jwc /MyControl 上的图；失败回落到 Person 图标
+            val avatarPlaceholder: @Composable () -> Unit = {
+                Icon(
+                    imageVector = Icons.Outlined.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(36.dp),
+                )
+            }
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))
@@ -715,14 +723,9 @@ private fun UserCard(
                             shape = RoundedCornerShape(20.dp),
                         )
                         .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.2f)),
-                    fallback = {
-                        Icon(
-                            imageVector = Icons.Outlined.Person,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(36.dp),
-                        )
-                    },
+                    // 失败态也保留外层头像开关的点击语义，不能被默认的图片重试吃掉。
+                    error = avatarPlaceholder,
+                    fallback = avatarPlaceholder,
                 )
                 // 开关状态角标：睁眼=正在显示头像，闭眼=已关闭（不发头像请求）
                 Box(

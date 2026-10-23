@@ -18,6 +18,14 @@ When an emulator or device is connected, also run:
 
 If connected tests are skipped because no device is available, record that in the release note.
 
+To explicitly check the live university PNG/JPEG image service on Android (public images only):
+
+```powershell
+.\gradlew.bat :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=cn.jxnu.nvzhuanban.data.network.JwcImageLiveDiagnosticTest -Pandroid.testInstrumentationRunnerArguments.liveJwcImages=true
+```
+
+The live image checks are skipped by default so normal tests do not depend on the university service.
+
 ## Install smoke
 
 1. Install the release APK.
@@ -48,6 +56,8 @@ If connected tests are skipped because no device is available, record that in th
 2. Open announcement detail and confirm the article renders through the native reader, including text, tables, and images.
 3. Confirm avatar is not requested while "显示学生头像" is off.
 4. Re-read `docs/privacy.md` if auth, cookie, avatar, WebView, logging, or widget behavior changed.
+5. With a network failure, confirm image loading stops after bounded retries. Restore connectivity and tap the failed image, or leave and return to the foreground: the image should recover; a successfully loaded image should not download again on resume.
+6. Open an article with images inside a table or a text link and confirm all images appear; table images follow the text table in document order.
 
 ## Widget
 

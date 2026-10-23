@@ -278,7 +278,8 @@ object ArticleDetailPage {
      *   污染外层段落状态。**单元格用 `inlineOnly = true` 实例**——Word 复制粘贴的 HTML 经常把
      *   单元格内容包在 `<p>` / `<div>` 里，原本的 flushParagraph 会把这些文本踢去 `blocks`，而
      *   cell walker 不读 blocks → 单元格全空。inlineOnly 模式把 flush 改成插 LineBreak，文本
-     *   留在 pendingRuns 里被 collectCellInline 收回。
+     *   留在 pendingRuns 里被 collectCellInline 收回。表格里的图片由外层 walker 统一收集，
+     *   按 DOM 顺序接在文字表格后，避免被只收内联文本的 cell walker 丢弃。
      */
     private class BodyWalker(private val inlineOnly: Boolean = false) {
         private val blocks = mutableListOf<ArticleBlock>()
@@ -310,20 +311,20 @@ object ArticleDetailPage {
             when (el.tagName().lowercase()) {
                 "img" -> {
                     flushParagraph(align)
-                    val src = el.absUrl("src")
-                    if (src.isNotBlank()) {
-                        blocks += ArticleBlock.Image(
-                            src = src,
-                            alt = el.attr("alt").takeIf { it.isNotBlank() },
-                            widthPx = parseImgDimension(el.attr("width")),
-                            heightPx = parseImgDimension(el.attr("height")),
-                        )
-                    }
+                    parseImage(el)?.let { blocks += it }
                 }
                 "table" -> {
                     flushParagraph(align)
                     val rows = parseTable(el)
-                    if (rows.isNotEmpty()) blocks += ArticleBlock.Table(rows)
+                    // Table 单元格只支持内联文字；图片单独输出，保留原文字网格。
+                    // 只从当前表格 DOM 收一次，不合并 cell walker 的 blocks，嵌套表格不重复图。
+                    val images = el.select("img").mapNotNull(::parseImage)
+                    val hasText = rows.any { row -> row.any { it.isNotEmpty() } }
+                    if (rows.isNotEmpty() && (hasText || images.isEmpty())) {
+                        blocks += ArticleBlock.Table(rows)
+                    }
+                    // 纯图片的排版表格直接摊平成图片，避免显示没有文字的空网格。
+                    blocks += images
                 }
                 "hr" -> {
                     flushParagraph(align)
@@ -337,6 +338,7 @@ object ArticleDetailPage {
                         flushParagraph(align)
                         val name = el.text().trim().ifBlank { hrefFileName(href) }
                         blocks += ArticleBlock.Attachment(name, href)
+                        appendLinkedImages(el, align)
                     } else {
                         val text = el.text()
                         // 只把真正的 http(s) 外链做成可点击 Link；
@@ -346,6 +348,7 @@ object ArticleDetailPage {
                             text.isNotBlank()
                         ) {
                             pendingRuns += InlineRun.Link(text.trim(), href, style)
+                            appendLinkedImages(el, align)
                         } else {
                             walkChildren(el, style, align)
                         }
@@ -403,6 +406,27 @@ object ArticleDetailPage {
 
                 else -> walkChildren(el, style, align)
             }
+        }
+
+        private fun parseImage(el: Element): ArticleBlock.Image? {
+            val src = el.absUrl("src")
+            if (src.isBlank()) return null
+            return ArticleBlock.Image(
+                src = src,
+                alt = el.attr("alt").takeIf { it.isNotBlank() },
+                widthPx = parseImgDimension(el.attr("width")),
+                heightPx = parseImgDimension(el.attr("height")),
+            )
+        }
+
+        /** Link / Attachment 会折叠整个 anchor 的文本，需另收图片；走 walkChildren 的分支不调用。 */
+        private fun appendLinkedImages(anchor: Element, align: ParagraphAlign) {
+            // 表格的图片由外层统一收集，这里不改变 cell 原本的文字 / 换行布局。
+            if (inlineOnly) return
+            val images = anchor.select("img").mapNotNull(::parseImage)
+            if (images.isEmpty()) return
+            flushParagraph(align)
+            blocks += images
         }
 
         private fun parseTable(table: Element): List<List<List<InlineRun>>> {

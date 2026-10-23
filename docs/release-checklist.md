@@ -44,6 +44,12 @@ Record the APK SHA-256 next to the release notes:
 Get-FileHash .\app\build\outputs\apk\release\app-release.apk -Algorithm SHA256
 ```
 
+## Publish and verify downloads
+
+- Publish a normal GitHub release (not draft/prerelease) with an APK named `jiangshiban-X.Y.Z-release.apk` and `SHA256SUMS.txt`.
+- The official site at `https://jsb.betterjxnu.cn/` synchronizes `releases/latest` with a server timer approximately every three minutes. Its page is static, but its version and download are updated by that timer.
+- Verify the GitHub asset digest, the official site's downloaded APK, and the SHA-256 displayed on the site all match the locally signed APK. A changed download link alone is not enough: the site synchronizer previously left the old displayed SHA behind.
+
 ## Signing material
 
 - `keystore.properties`, `*.jks`, and `*.keystore` must stay out of version control.

@@ -158,6 +158,99 @@ class ArticleDetailPageTest {
         )
     }
 
+    @Test
+    fun `table images survive after text grid in document order`() {
+        val parsed = ArticleDetailPage.parse(articleWithBody("""
+            <table>
+              <tr><th>地点</th><th>示意图</th></tr>
+              <tr><td><p><strong>第一考场</strong></p><p>二楼</p></td>
+                <td><p><a href="https://example.com/map">查看说明<img src="../files/room.jpg" alt="考场图" width="640" height="480px"></a></p></td></tr>
+              <tr><td>第二考场</td><td><div><img src="../files/route.jpg" alt="路线图"></div></td></tr>
+            </table>
+            <p>表格后的说明</p>
+        """), baseUri)
+
+        assertEquals(listOf("Table", "Image", "Image", "Paragraph"), parsed.blocks.map { it::class.simpleName })
+        val table = parsed.blocks.first() as ArticleBlock.Table
+        assertEquals(3, table.rows.size)
+        assertTrue(table.rows.all { it.size == 2 })
+        assertEquals("第一考场\n二楼", flatten(ArticleBlock.Paragraph(table.rows[1][0])))
+        assertTrue(table.rows[1][0].filterIsInstance<InlineRun.Text>().first().style.bold)
+        assertEquals("https://example.com/map", table.rows[1][1].filterIsInstance<InlineRun.Link>().single().url)
+        val images = parsed.blocks.filterIsInstance<ArticleBlock.Image>()
+        assertEquals(listOf("https://jwc.jxnu.edu.cn/files/room.jpg", "https://jwc.jxnu.edu.cn/files/route.jpg"), images.map { it.src })
+        assertEquals("考场图", images.first().alt)
+        assertEquals(640, images.first().widthPx)
+        assertEquals(480, images.first().heightPx)
+        assertEquals("表格后的说明", flatten(parsed.blocks.last() as ArticleBlock.Paragraph))
+    }
+
+    @Test
+    fun `image only layout table becomes images without an empty grid`() {
+        val parsed = ArticleDetailPage.parse(articleWithBody("""
+            <table><tr>
+              <td><p><a href="../files/a.jpg"><img src="../files/a.jpg" alt="第一张"></a></p></td>
+              <td><div><img src="../files/b.jpg" width="100%" height="auto"></div></td>
+            </tr></table>
+        """), baseUri)
+
+        assertEquals(listOf("Image", "Image"), parsed.blocks.map { it::class.simpleName })
+        val images = parsed.blocks.filterIsInstance<ArticleBlock.Image>()
+        assertEquals("第一张", images.first().alt)
+        assertNull(images.last().widthPx)
+        assertNull(images.last().heightPx)
+    }
+
+    @Test
+    fun `nested table emits each image element once including repeated source urls`() {
+        val parsed = ArticleDetailPage.parse(articleWithBody("""
+            <table><tr><td>外层文字
+              <img src="../files/first.jpg">
+              <table><tr><td><img src="../files/nested.jpg"></td></tr></table>
+              <img src="../files/last.jpg">
+            </td><td><img src="../files/first.jpg"></td></tr></table>
+        """), baseUri)
+
+        val images = parsed.blocks.filterIsInstance<ArticleBlock.Image>()
+        assertEquals(listOf("first.jpg", "nested.jpg", "last.jpg", "first.jpg"), images.map { it.src.substringAfterLast('/') })
+        assertEquals(1, parsed.blocks.filterIsInstance<ArticleBlock.Table>().size)
+    }
+
+    @Test
+    fun `text link keeps its nested image and clickable text`() {
+        val parsed = ArticleDetailPage.parse(articleWithBody("""
+            <p><a href="https://example.com/detail">查看详情<span><img src="../files/linked.jpg" alt="活动照片" width="800" height="600"></span></a></p>
+        """), baseUri)
+
+        assertEquals(listOf("Paragraph", "Image"), parsed.blocks.map { it::class.simpleName })
+        val link = (parsed.blocks.first() as ArticleBlock.Paragraph).runs.filterIsInstance<InlineRun.Link>().single()
+        assertEquals("查看详情", link.text)
+        assertEquals("https://example.com/detail", link.url)
+        val image = parsed.blocks.last() as ArticleBlock.Image
+        assertEquals("https://jwc.jxnu.edu.cn/files/linked.jpg", image.src)
+        assertEquals("活动照片", image.alt)
+        assertEquals(800, image.widthPx)
+        assertEquals(600, image.heightPx)
+    }
+
+    @Test
+    fun `attachment link keeps its preview image`() {
+        val parsed = ArticleDetailPage.parse(articleWithBody("""
+            <p><a href="../files/notice.pdf">通知文件<img src="../files/preview.jpg"></a></p>
+        """), baseUri)
+
+        assertEquals(listOf("Attachment", "Image"), parsed.blocks.map { it::class.simpleName })
+        assertEquals("通知文件", (parsed.blocks.first() as ArticleBlock.Attachment).name)
+        assertEquals("https://jwc.jxnu.edu.cn/files/preview.jpg", (parsed.blocks.last() as ArticleBlock.Image).src)
+    }
+
+    private fun articleWithBody(body: String): String = """
+        <div id="main-content">
+          <div class="text-large border-bottom">图片回归测试</div>
+          <div id="main-content">$body</div>
+        </div>
+    """.trimIndent()
+
     /**
      * 回归：jwc 通知的表格单元格经常是 Word 复制粘贴出来的 `<td><p>x</p></td>` 或
      * `<td><div>x</div></td>`，曾经因为 cell walker 内部 flushParagraph 把文本踢去

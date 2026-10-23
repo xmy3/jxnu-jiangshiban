@@ -163,6 +163,7 @@
     <!-- 通用 -->
     <string name="common_loading">加载中…</string>
     <string name="common_retry">重试</string>
+    <string name="image_load_failed_retry">图片加载失败，点按重试</string>
 
     <!-- 内容描述 (accessibility) -->
     <string name="cd_back">返回</string>
