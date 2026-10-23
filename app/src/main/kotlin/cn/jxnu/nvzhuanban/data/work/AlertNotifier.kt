@@ -149,11 +149,15 @@ object AlertNotifier {
 
     internal fun gradeBody(change: AlertChange<Grade>): String {
         val lines = buildList {
-            change.added.forEach { add(it.courseName + " " + it.score.ifBlank { "已出分" }) }
-            change.changed.forEach { add(it.courseName + " 更新为 " + it.score.ifBlank { "—" }) }
+            change.added.forEach { add(it.courseName + " " + it.describeScores()) }
+            change.changed.forEach { add(it.courseName + " 成绩更新：" + it.describeScores()) }
         }
         return joinCapped(lines)
     }
+
+    private fun Grade.describeScores(): String =
+        makeupScore?.takeIf { it.isNotBlank() }?.let { "原成绩 ${score.ifBlank { "—" }}，补考 $it" }
+            ?: score.ifBlank { "已出分" }
 
     internal fun examTitle(change: AlertChange<Exam>): String = when {
         change.added.isNotEmpty() && change.changed.isEmpty() -> "新增考试安排"

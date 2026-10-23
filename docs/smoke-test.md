@@ -56,6 +56,9 @@ The live image checks are skipped by default so normal tests do not depend on th
 2. Without exact-alarm permission, prepare a tomorrow-exam reminder before 20:00. If delivery is delayed, run the background check after 20:00 and confirm the pending reminder still arrives with the latest room/seat. A cancelled or rescheduled exam must not leave its old reminder behind.
 3. After a reminder has been delivered, run another check and confirm it is not recreated. Enabling reminders for the first time after 20:00 must not create a late reminder for tomorrow.
 4. Check fractional-credit courses and totals in grades and the training plan: 0.5 stays 0.5, 171.5 stays 171.5, and integer credits have no trailing .0.
+5. Publish a makeup score while the original score is unchanged. Confirm the notification labels both scores correctly. Inserting or reordering exchange-course rows must not announce existing courses again.
+6. Load a makeup/deferred exam with an explicit full date, then change its date or room. Confirm it participates in change alerts and the combined evening reminder without colliding with a regular exam of the same course. Entries without a year or with conflicting/ranged dates must not get a guessed reminder; an incomplete exam response must preserve pending reminders.
+7. Sign out while a grade/exam request is pending, then sign in again. Confirm the old response cannot repopulate the cleared cache or update the new account's alert baseline.
 
 ## WebView and privacy
 

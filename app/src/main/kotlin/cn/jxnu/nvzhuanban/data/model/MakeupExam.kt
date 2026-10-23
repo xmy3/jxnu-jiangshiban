@@ -1,5 +1,7 @@
 package cn.jxnu.nvzhuanban.data.model
 
+import java.time.LocalDate
+
 /**
  * 补缓考考试安排。
  *
@@ -30,3 +32,34 @@ data class MakeupExam(
     /** 「补考」/「缓考」；为空时按"补考"展示。 */
     val remark: String?,
 )
+
+private val fullExamDate = Regex("(?<!\\d)(\\d{4})\\s*[-/.年]\\s*(\\d{1,2})\\s*[-/.月]\\s*(\\d{1,2})(?:日)?(?!\\d)")
+private val labeledExamDate = Regex("(?:请于|考试(?:时间|日期)\\s*[：:为]?)\\s*" + fullExamDate.pattern)
+private val examDateRange = Regex(fullExamDate.pattern + "\\s*(?:至|到|[-—~～])")
+
+internal fun MakeupExam.toDatedExam(): Exam? {
+    if (listOfNotNull(examTime, examMethod).any { examDateRange.containsMatchIn(it) }) return null
+    if (!fullExamDate.containsMatchIn(examTime.orEmpty()) &&
+        !labeledExamDate.containsMatchIn(examMethod.orEmpty())
+    ) return null
+    val dates = listOfNotNull(examTime, examMethod).flatMap { text ->
+        fullExamDate.findAll(text).map { match ->
+            runCatching {
+                LocalDate.of(match.groupValues[1].toInt(), match.groupValues[2].toInt(), match.groupValues[3].toInt())
+            }.getOrNull()
+        }.toList()
+    }
+    val date = dates.distinct().singleOrNull() ?: return null
+    val kind = if (remark?.contains("缓考") == true) ExamKind.DEFERRED else ExamKind.MAKEUP
+    val label = if (kind == ExamKind.DEFERRED) "缓考" else "补考"
+    return Exam(
+        id = id,
+        courseName = "$courseName（$label）",
+        courseCode = courseCode,
+        startTime = date.atStartOfDay(),
+        location = location.orEmpty(),
+        remark = remark,
+        examType = label,
+        kind = kind,
+    )
+}

@@ -5,8 +5,8 @@ import cn.jxnu.nvzhuanban.data.network.JwcClient
 import cn.jxnu.nvzhuanban.data.network.JxnuUrls
 import cn.jxnu.nvzhuanban.data.network.ParseWarnings
 import cn.jxnu.nvzhuanban.data.network.pages.MakeupExamPage
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import cn.jxnu.nvzhuanban.data.network.pages.PageParse
+import cn.jxnu.nvzhuanban.data.network.pages.requireComplete
 
 /**
  * 补缓考考试安排仓库。
@@ -14,32 +14,32 @@ import kotlinx.coroutines.sync.withLock
  * 补缓考公告频率比常规考试更低（每学期开学初出一次），所以同样走「内存缓存 + 显式 refresh」。
  * 单例 + Mutex 与 [ExamRepository] 一致。
  */
-class MakeupExamRepository {
+class MakeupExamRepository(
+    private val fetchHtml: suspend () -> String = {
+        JwcClient.getHtmlAuth(JxnuUrls.PAGE_MAKEUP_EXAM, "补缓考页返回空响应")
+    },
+) {
 
-    @Volatile
-    private var cached: List<MakeupExam>? = null
-    private val mutex = Mutex()
+    private val cache = RepositoryCache<List<MakeupExam>>()
 
-    suspend fun fetchAll(): List<MakeupExam> = mutex.withLock {
-        cached ?: fetchNow().also { cached = it }
+    suspend fun fetchAll(): List<MakeupExam> = cache.load { fetchPage().value }
+
+    suspend fun refresh(): List<MakeupExam> = cache.load(refresh = true) { fetchPage().value }
+
+    suspend fun refreshForAlerts(): List<MakeupExam> = cache.load(refresh = true) {
+        fetchPage().requireComplete()
     }
 
-    suspend fun refresh(): List<MakeupExam> = mutex.withLock {
-        cached = null
-        fetchNow().also { cached = it }
-    }
-
-    /** 退出登录时清空内存缓存。**无锁**（`@Volatile cached`），避免 repo.mutex ⇄ authMutex 跨锁死锁——见 GradeRepository.clearCache。 */
     fun clearCache() {
-        cached = null
+        cache.clear()
     }
 
-    private suspend fun fetchNow(): List<MakeupExam> {
-        val html = JwcClient.getHtmlAuth(JxnuUrls.PAGE_MAKEUP_EXAM, "补缓考页返回空响应")
+    private suspend fun fetchPage(): PageParse<List<MakeupExam>> {
+        val html = fetchHtml()
         val page = MakeupExamPage.parsePage(html)
         // 只在真正拉网络时上报；缓存命中不重复弹同一句告警
         page.warnings.forEach(ParseWarnings::report)
-        return page.value
+        return page
     }
 
     companion object {

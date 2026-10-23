@@ -2,6 +2,8 @@ package cn.jxnu.nvzhuanban.data.work
 
 import cn.jxnu.nvzhuanban.data.model.ExamReminderDay
 import cn.jxnu.nvzhuanban.data.model.ExamReminderItem
+import cn.jxnu.nvzhuanban.data.model.AlertDiff
+import cn.jxnu.nvzhuanban.data.model.Grade
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -13,6 +15,15 @@ import org.junit.Test
  * 而且它必须只说「明天」+ 考场/座位：教务系统给的考试时间是假的，写个具体时刻会害人迟到。
  */
 class AlertNotifierCopyTest {
+
+    @Test
+    fun `补考出分正文同时标明补考成绩和原成绩`() {
+        val old = Grade("grade", "26-27第1学期", "高数", "CS101", 4f, "50", 0f)
+        val change = AlertDiff.grades(
+            AlertDiff.gradeFingerprints(listOf(old)), listOf(old.copy(makeupScore = "75")),
+        )
+        assertEquals("高数 成绩更新：原成绩 50，补考 75", AlertNotifier.gradeBody(change))
+    }
 
     private fun item(name: String, room: String = "B203", seat: String? = null) =
         ExamReminderItem(courseName = name, location = room, seat = seat)

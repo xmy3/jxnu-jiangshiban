@@ -7,8 +7,6 @@ import cn.jxnu.nvzhuanban.data.network.ParseWarnings
 import cn.jxnu.nvzhuanban.data.network.pages.ExamPage
 import cn.jxnu.nvzhuanban.data.network.pages.PageParse
 import cn.jxnu.nvzhuanban.data.network.pages.requireComplete
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /**
  * 考试安排仓库。
@@ -25,30 +23,22 @@ class ExamRepository(
     },
 ) {
 
-    @Volatile
-    private var cached: List<Exam>? = null
-    private val mutex = Mutex()
+    private val cache = RepositoryCache<List<Exam>>()
 
     /** 缓存优先；首次或 [refresh] 后才走网络。 */
-    suspend fun fetchAll(): List<Exam> = mutex.withLock {
-        cached ?: fetchNow().also { cached = it }
-    }
+    suspend fun fetchAll(): List<Exam> = cache.load { fetchNow() }
 
     /** 历史命名保留：等价于 [fetchAll]，给 ExamsViewModel 用。 */
     suspend fun getUpcomingExams(): List<Exam> = fetchAll()
 
-    suspend fun refresh(): List<Exam> = mutex.withLock {
-        cached = null
-        fetchNow().also { cached = it }
+    suspend fun refresh(): List<Exam> = cache.load(refresh = true) { fetchNow() }
+
+    suspend fun refreshForAlerts(): List<Exam> = cache.load(refresh = true) {
+        fetchPage().requireComplete()
     }
 
-    suspend fun refreshForAlerts(): List<Exam> = mutex.withLock {
-        fetchPage().requireComplete().also { cached = it }
-    }
-
-    /** 退出登录时清空内存缓存。**无锁**（`@Volatile cached`），避免 repo.mutex ⇄ authMutex 跨锁死锁——见 GradeRepository.clearCache。 */
     fun clearCache() {
-        cached = null
+        cache.clear()
     }
 
     private suspend fun fetchNow(): List<Exam> = fetchPage().value

@@ -6,10 +6,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** 被后台盯着的两类数据。分开存指纹和基线，是因为两类拉取可以一成一败，不该互相拖累。 */
+/** 各数据源独立建基线，新增来源不会把历史数据误报为新增。 */
 enum class AlertKind(val storageKey: String) {
     GRADES("grades"),
     EXAMS("exams"),
+    MAKEUP_EXAMS("makeup_exams"),
 }
 
 /** 最近一次后台检查的结果，只用于「我的」页副标题的诚实展示。 */
@@ -29,7 +30,7 @@ enum class AlertCheckResult {
 /**
  * 出分 / 考试变更提醒的本地状态。
  *
- * 两类数据各存一份「上次看到的指纹表」：
+ * 各类数据分别保存「上次看到的指纹表」：
  *  - [known] = `课程 id → 指纹`（指纹定义见 [cn.jxnu.nvzhuanban.data.model.AlertDiff]）
  *  - [isBaselined] = 是否已经建过基线。**首次检查只落库、不弹通知** —— 否则一开开关就
  *    把整个学期的历史成绩当成"新出分"轰炸一遍。
@@ -140,11 +141,12 @@ object AlertPrefs {
     /** 换号 / 登出：清掉指纹和基线，保留开关状态。 */
     fun clearKnown() {
         if (!::sp.isInitialized) return
-        sp.edit()
-            .remove(knownKey(AlertKind.GRADES))
-            .remove(knownKey(AlertKind.EXAMS))
-            .remove(baselineKey(AlertKind.GRADES))
-            .remove(baselineKey(AlertKind.EXAMS))
+        sp.edit().apply {
+            AlertKind.entries.forEach { kind ->
+                remove(knownKey(kind))
+                remove(baselineKey(kind))
+            }
+        }
             .remove(KEY_LAST_CHECK)
             .remove(KEY_LAST_RESULT)
             .apply()

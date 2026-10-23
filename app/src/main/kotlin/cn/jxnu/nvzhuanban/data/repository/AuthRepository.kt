@@ -393,6 +393,7 @@ class AuthRepository private constructor(
 
     /** 仅清各 Repository 单例的内存缓存 —— 会话过期时用（数据可在重登后重新拉取）。 */
     private suspend fun clearRepositoryCaches() {
+        ExamAlertRepository.instance.clearCache()
         ScheduleRepository.instance.clearCache()
         GradeRepository.instance.clearCache()
         TestGradeRepository.instance.clearCache()

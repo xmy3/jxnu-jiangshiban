@@ -39,22 +39,68 @@ object AlertDiff {
         append('|').append(exam.examType)
     }
 
-    fun gradeFingerprints(grades: List<Grade>): Map<String, String> =
-        grades.distinctBy { it.id }.associate { it.id to gradeFingerprint(it) }
+    fun gradeFingerprints(grades: List<Grade>): Map<String, String> = buildMap {
+        grades.distinctBy { it.id }.groupBy(::gradeKey).forEach { (key, sameCourse) ->
+            if (sameCourse.first().exchangeSchool == null) {
+                put(key, gradeFingerprint(sameCourse.first()))
+            } else {
+                sameCourse.map(::gradeFingerprint).sorted().forEachIndexed { index, fingerprint ->
+                    put("$key:$index", fingerprint)
+                }
+            }
+        }
+    }
 
     fun examFingerprints(exams: List<Exam>): Map<String, String> =
         exams.distinctBy(::examKey).associate { examKey(it) to examFingerprint(it) }
 
     /** 新出现的课程 = 出分；同一门课指纹变了 = 成绩被修改 / 补考出分。 */
-    fun grades(known: Map<String, String>, current: List<Grade>): AlertChange<Grade> =
-        diff(known, current, { it.id }, ::gradeFingerprint)
+    fun grades(known: Map<String, String>, current: List<Grade>): AlertChange<Grade> {
+        val unique = current.distinctBy { it.id }
+        val regular = diff(known, unique.filter { it.exchangeSchool == null }, { it.id }, ::gradeFingerprint)
+        val added = regular.added.toMutableList()
+        val changed = regular.changed.toMutableList()
+        unique.filter { it.exchangeSchool != null }.groupBy(::gradeKey).forEach { (key, sameCourse) ->
+            val previous = knownExchangeFingerprints(known, key, sameCourse.first()).toMutableList()
+            val unmatched = sameCourse.filterNot { previous.remove(gradeFingerprint(it)) }
+            changed += unmatched.take(previous.size)
+            added += unmatched.drop(previous.size)
+        }
+        return AlertChange(added, changed)
+    }
+
+    private fun gradeKey(grade: Grade): String = if (grade.exchangeSchool == null) grade.id else {
+        "exchange:v2:" + listOf(grade.semester, grade.exchangeSchool, grade.courseName)
+            .joinToString("") { "${it.length}:$it" }
+    }
+
+    private val legacyExchangePosition = Regex("\\d+-\\d+")
+    private val exchangePosition = Regex("\\d+")
+
+    private fun knownExchangeFingerprints(known: Map<String, String>, key: String, grade: Grade): Collection<String> {
+        val prefix = "$key:"
+        val current = known.filterKeys {
+            it.startsWith(prefix) && exchangePosition.matches(it.removePrefix(prefix))
+        }.values
+        if (current.isNotEmpty()) return current
+        val legacyPrefix = "exchange-${grade.semester}-${grade.exchangeSchool}-${grade.courseName}-"
+        return known.filterKeys {
+            it.startsWith(legacyPrefix) && legacyExchangePosition.matches(it.removePrefix(legacyPrefix))
+        }.values
+    }
 
     /** 新出现的考试 = 教务新排的；指纹变了 = 改期 / 换考场 / 换座位。 */
     fun exams(known: Map<String, String>, current: List<Exam>): AlertChange<Exam> =
         diff(normalizeExamKeys(known), current, ::examKey, ::examFingerprint)
 
-    private fun examKey(exam: Exam): String =
-        if (exam.courseCode.isNotBlank()) "course:${exam.courseCode}" else "id:${exam.id}"
+    private fun examKey(exam: Exam): String {
+        val key = if (exam.courseCode.isNotBlank()) "course:${exam.courseCode}" else "id:${exam.id}"
+        return when (exam.kind) {
+            ExamKind.REGULAR -> key
+            ExamKind.MAKEUP -> "makeup:$key"
+            ExamKind.DEFERRED -> "deferred:$key"
+        }
+    }
 
     // 旧版本的基线 key 是「课程号-完整时间」，升级后仍需识别，避免整批误报新增。
     private val legacyExamKey = Regex("""^(.+)-\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$""")

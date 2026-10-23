@@ -5,17 +5,20 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import cn.jxnu.nvzhuanban.NvzhuanbanApp
 import cn.jxnu.nvzhuanban.data.model.AlertDiff
+import cn.jxnu.nvzhuanban.data.model.AlertChange
 import cn.jxnu.nvzhuanban.data.model.Exam
+import cn.jxnu.nvzhuanban.data.model.ExamKind
 import cn.jxnu.nvzhuanban.data.model.Grade
 import cn.jxnu.nvzhuanban.data.network.JwcError
 import cn.jxnu.nvzhuanban.data.network.JwcException
 import cn.jxnu.nvzhuanban.data.repository.AuthRepository
-import cn.jxnu.nvzhuanban.data.repository.ExamRepository
+import cn.jxnu.nvzhuanban.data.repository.ExamAlertRepository
 import cn.jxnu.nvzhuanban.data.repository.GradeRepository
 import cn.jxnu.nvzhuanban.data.storage.AlertCheckResult
 import cn.jxnu.nvzhuanban.data.storage.AlertKind
 import cn.jxnu.nvzhuanban.data.storage.AlertPrefs
 import java.time.LocalDate
+import kotlinx.coroutines.CancellationException
 
 /**
  * 后台周期检查「有没有新出分 / 考试有没有变」，顺带把「考前一天提醒」的闹钟排好。
@@ -58,12 +61,16 @@ class GradeExamWatchWorker(
 
         // 只开考前一天提醒时不必拉成绩：少一个请求，也少一次"成绩被别人的刷新覆盖"的可能
         if (watchChanges) {
-            val grades = runCatching { GradeRepository.instance.refreshForAlerts() }.also(outcomes::add)
+            val grades = runCatching { GradeRepository.instance.refreshForAlerts() }
+                .onFailure { if (it is CancellationException) throw it }
+                .also(outcomes::add)
             grades.getOrNull()?.let { applyGrades(it.semesters.flatMap { semester -> semester.grades }) }
         }
 
         if (watchChanges || remindExams) {
-            val exams = runCatching { ExamRepository.instance.refreshForAlerts() }.also(outcomes::add)
+            val exams = runCatching { ExamAlertRepository.instance.refresh() }
+                .onFailure { if (it is CancellationException) throw it }
+                .also(outcomes::add)
             exams.getOrNull()?.let { all ->
                 if (watchChanges) applyExamChanges(all)
                 if (remindExams) syncExamReminders(all)
@@ -89,18 +96,27 @@ class GradeExamWatchWorker(
     }
 
     private fun applyExamChanges(exams: List<Exam>) {
+        val regular = examChanges(exams.filter { it.kind == ExamKind.REGULAR }, AlertKind.EXAMS)
+        val makeup = examChanges(exams.filter { it.kind != ExamKind.REGULAR }, AlertKind.MAKEUP_EXAMS)
+        AlertNotifier.notifyExams(
+            applicationContext,
+            AlertChange(regular.added + makeup.added, regular.changed + makeup.changed),
+        )
+    }
+
+    private fun examChanges(exams: List<Exam>, kind: AlertKind): AlertChange<Exam> {
         // 只盯还没考的。给上周考完的科目报"考场变了"纯属噪音，而且考完的会自然退出已知集合
         val today = LocalDate.now()
         val upcoming = exams.filter { !it.startTime.toLocalDate().isBefore(today) }
         val fingerprints = AlertDiff.examFingerprints(upcoming)
-        if (!AlertPrefs.isBaselined(AlertKind.EXAMS)) {
-            AlertPrefs.saveKnown(AlertKind.EXAMS, fingerprints)
-            AlertPrefs.markBaselined(AlertKind.EXAMS)
-            return
+        if (!AlertPrefs.isBaselined(kind)) {
+            AlertPrefs.saveKnown(kind, fingerprints)
+            AlertPrefs.markBaselined(kind)
+            return AlertChange()
         }
-        val change = AlertDiff.exams(AlertPrefs.known(AlertKind.EXAMS), upcoming)
-        AlertPrefs.saveKnown(AlertKind.EXAMS, fingerprints)
-        AlertNotifier.notifyExams(applicationContext, change)
+        val change = AlertDiff.exams(AlertPrefs.known(kind), upcoming)
+        AlertPrefs.saveKnown(kind, fingerprints)
+        return change
     }
 
     /** 每次拉到考试列表都整表重排闹钟：考试改期/撤销后旧闹钟必须跟着消失。 */

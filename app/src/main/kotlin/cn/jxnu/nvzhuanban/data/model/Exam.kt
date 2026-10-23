@@ -20,6 +20,7 @@ data class Exam(
     val remark: String? = null,
     /** 考核方式：考试 / 考查 */
     val examType: String = "考试",
+    val kind: ExamKind = ExamKind.REGULAR,
 ) {
     fun daysLeftFrom(now: LocalDateTime): Long =
         ChronoUnit.DAYS.between(now.toLocalDate(), startTime.toLocalDate())
@@ -40,3 +41,5 @@ data class Exam(
 }
 
 enum class ExamStatus { UPCOMING, TODAY, FINISHED }
+
+enum class ExamKind { REGULAR, MAKEUP, DEFERRED }
