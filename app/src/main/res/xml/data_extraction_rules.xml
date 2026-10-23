@@ -14,6 +14,8 @@
         <exclude domain="sharedpref" path="course_overrides.xml"/>
         <exclude domain="sharedpref" path="announcement_read_prefs.xml"/>
         <exclude domain="sharedpref" path="people_search_history.xml"/>
+        <exclude domain="sharedpref" path="alert_prefs.xml"/>
+        <exclude domain="sharedpref" path="exam_reminders.xml"/>
         <exclude domain="file" path="jxnu_cookies.tsv"/>
         <exclude domain="file" path="widget_snapshot.json"/>
     </cloud-backup>
@@ -26,6 +28,8 @@
         <exclude domain="sharedpref" path="course_overrides.xml"/>
         <exclude domain="sharedpref" path="announcement_read_prefs.xml"/>
         <exclude domain="sharedpref" path="people_search_history.xml"/>
+        <exclude domain="sharedpref" path="alert_prefs.xml"/>
+        <exclude domain="sharedpref" path="exam_reminders.xml"/>
         <exclude domain="file" path="jxnu_cookies.tsv"/>
         <exclude domain="file" path="widget_snapshot.json"/>
     </device-transfer>

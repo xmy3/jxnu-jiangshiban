@@ -41,16 +41,21 @@ object ExamReminderPlan {
         examDate.minusDays(1).atTime(REMINDER_TIME)
 
     /**
-     * 从完整考试列表算出「还来得及提醒」的考试日。
+     * 从完整考试列表算出需要保留的提醒日。
      *
      * 丢掉两类：
-     *  - 提醒时刻已经过去的（含今天就要考的）—— 排不到过去的闹钟，而且「昨晚八点提醒你」这句话
-     *    现在才弹出来只会莫名其妙。
+     *  - 提醒时刻已经过去且没有待送达闹钟的。已排入 [pendingDates] 的明日考试仍保留，
+     *    让系统延迟投递的闹钟有机会送达；到考试当天则过期。已发送的提醒已从存档移除，
+     *    不会再次进入计划。首次在八点后开启提醒仍不补发。
      *  - 同一门课重复出现的行：去重后不会在同一条通知里念两遍。
      *
      * 返回按日期升序，方便调用方稳定地分配 requestCode / 打日志。
      */
-    fun plan(exams: List<Exam>, now: LocalDateTime): List<ExamReminderDay> =
+    fun plan(
+        exams: List<Exam>,
+        now: LocalDateTime,
+        pendingDates: Set<LocalDate> = emptySet(),
+    ): List<ExamReminderDay> =
         exams
             .groupBy { it.startTime.toLocalDate() }
             .map { (date, sameDay) ->
@@ -59,7 +64,10 @@ object ExamReminderPlan {
                     items = sameDay.map { it.toReminderItem() }.distinct(),
                 )
             }
-            .filter { reminderAt(it.date).isAfter(now) }
+            .filter {
+                reminderAt(it.date).isAfter(now) ||
+                    (it.date in pendingDates && it.date.isAfter(now.toLocalDate()))
+            }
             .sortedBy { it.date }
 
     private fun Exam.toReminderItem() = ExamReminderItem(

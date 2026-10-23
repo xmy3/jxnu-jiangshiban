@@ -50,6 +50,13 @@ The live image checks are skipped by default so normal tests do not depend on th
 5. Announcements: load first page, open detail, open external browser, paginate.
 6. Profile: toggle theme mode, dynamic color where available, and avatar on/off.
 
+## Alert and credit regressions
+
+1. Start with no saved login, sign in manually, then tap a grade or exam notification while the same Activity is alive. Confirm it opens the corresponding page.
+2. Without exact-alarm permission, prepare a tomorrow-exam reminder before 20:00. If delivery is delayed, run the background check after 20:00 and confirm the pending reminder still arrives with the latest room/seat. A cancelled or rescheduled exam must not leave its old reminder behind.
+3. After a reminder has been delivered, run another check and confirm it is not recreated. Enabling reminders for the first time after 20:00 must not create a late reminder for tomorrow.
+4. Check fractional-credit courses and totals in grades and the training plan: 0.5 stays 0.5, 171.5 stays 171.5, and integer credits have no trailing .0.
+
 ## WebView and privacy
 
 1. Open 我的 → 空闲教室 and confirm the classroom site and its internal links (including new-window links) stay inside the app. Confirm external links do not launch a browser, refresh works, and system Back navigates WebView history before leaving the screen.

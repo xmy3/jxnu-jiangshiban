@@ -5,10 +5,12 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import cn.jxnu.nvzhuanban.data.model.Exam
 import cn.jxnu.nvzhuanban.data.model.ExamReminderDay
 import cn.jxnu.nvzhuanban.data.model.ExamReminderPlan
 import cn.jxnu.nvzhuanban.data.storage.ExamReminderStore
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 
 /**
@@ -40,11 +42,13 @@ object ExamReminderScheduler {
      *
      * 每次都整表覆盖（而不是增量 add），因为考试会被改期甚至撤销，增量很容易留下幽灵闹钟。
      */
-    fun sync(context: Context, days: List<ExamReminderDay>) {
+    fun sync(context: Context, exams: List<Exam>, now: LocalDateTime = LocalDateTime.now()) {
         val previous = ExamReminderStore.load(context)
+        // 必须接收完整考试列表，再结合待送达存档规划；单看未来触发时间会误删延迟闹钟。
+        val days = ExamReminderPlan.plan(exams, now, previous.map { it.date }.toSet())
         val keep = days.map { it.date }.toSet()
         previous.filterNot { it.date in keep }.forEach { cancelDay(context, it.date) }
-        // 只存真要响的：开机重排时不该把已经过期的日子再拉起来
+        // 保留待送达提醒的最新内容；已撤销/改期/过期的考试仍会移除。
         ExamReminderStore.save(context, days)
         days.forEach { scheduleDay(context, it) }
     }
@@ -68,7 +72,7 @@ object ExamReminderScheduler {
                 .toInstant()
                 .toEpochMilli()
         }.getOrNull() ?: return
-        // 已经过点的（例如存档是在 20:05 写的）不排：AlarmManager 会立刻补发，等于半夜突袭弹窗
+        // 已过点的待送达闹钟保持原样，不取消也不重排，避免刷新变成立即补发。
         if (triggerAt <= System.currentTimeMillis()) return
 
         val pi = pendingIntent(context, day.date)

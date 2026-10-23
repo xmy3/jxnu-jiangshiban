@@ -14,6 +14,39 @@ import org.junit.Test
  */
 class ExamReminderPlanTest {
 
+    @Test
+    fun `refresh after eight preserves a delayed pending alarm and updates its room`() {
+        val date = LocalDate.of(2026, 1, 9)
+        val before = ExamReminderPlan.plan(listOf(exam(date = date)), date.minusDays(1).atTime(19, 59))
+        val pending = before.map { it.date }.toSet()
+        for (time in listOf(20 to 0, 20 to 1, 23 to 59)) {
+            val refreshed = ExamReminderPlan.plan(
+                listOf(exam(date = date, location = "B204")),
+                date.minusDays(1).atTime(time.first, time.second),
+                pendingDates = pending,
+            )
+            assertEquals(listOf(date), refreshed.map { it.date })
+            assertEquals("B204", refreshed.single().items.single().location)
+        }
+    }
+
+    @Test
+    fun `cancelled or rescheduled exams do not retain their old pending alarm`() {
+        val date = LocalDate.of(2026, 1, 9)
+        val now = date.minusDays(1).atTime(20, 1)
+        assertTrue(ExamReminderPlan.plan(emptyList(), now, setOf(date)).isEmpty())
+        val moved = ExamReminderPlan.plan(listOf(exam(date = date.plusDays(1))), now, setOf(date))
+        assertEquals(listOf(date.plusDays(1)), moved.map { it.date })
+    }
+
+    @Test
+    fun `delivered reminders and pending reminders on exam day are not recreated`() {
+        val date = LocalDate.of(2026, 1, 9)
+        val exams = listOf(exam(date = date))
+        assertTrue(ExamReminderPlan.plan(exams, date.minusDays(1).atTime(20, 1), emptySet()).isEmpty())
+        assertTrue(ExamReminderPlan.plan(exams, date.atStartOfDay(), setOf(date)).isEmpty())
+    }
+
     private fun exam(
         courseName: String = "高等数学",
         date: LocalDate = LocalDate.of(2026, 1, 9),

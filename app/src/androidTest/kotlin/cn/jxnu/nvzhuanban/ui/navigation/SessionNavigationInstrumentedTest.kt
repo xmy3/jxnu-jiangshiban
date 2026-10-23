@@ -1,9 +1,13 @@
 package cn.jxnu.nvzhuanban.ui.navigation
 
 import androidx.activity.ComponentActivity
+import android.content.Intent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.lifecycle.ViewModel
@@ -13,6 +17,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import cn.jxnu.nvzhuanban.data.model.AuthState
+import cn.jxnu.nvzhuanban.data.model.UserProfile
+import cn.jxnu.nvzhuanban.data.work.AlertNotifier
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -25,6 +33,41 @@ import org.junit.runner.RunWith
 class SessionNavigationInstrumentedTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @After
+    fun clearPendingAlert() { AlertNavigation.consume() }
+
+    @Test
+    fun notificationOpensGradesAfterLoggingInFromAnInitiallyLoggedOutGraph() {
+        AlertNavigation.consume()
+        lateinit var nav: NavHostController
+        var authState by mutableStateOf<AuthState>(AuthState.LoggedOut)
+        compose.setContent {
+            nav = rememberNavController()
+            AlertNavigationEffect(nav, authState)
+            NavHost(
+                navController = nav,
+                startDestination = Routes.LOGIN,
+                enterTransition = { EnterTransition.None },
+                exitTransition = { ExitTransition.None },
+            ) {
+                composable(Routes.LOGIN) { Text("login") }
+                composable(Routes.SCHEDULE) { Text("schedule") }
+                composable(Routes.GRADES) { Text("grades") }
+            }
+        }
+        compose.onNodeWithText("login").assertExists()
+        compose.runOnIdle {
+            authState = AuthState.LoggedIn(UserProfile("20240001", "测试", "", "", "", 2024))
+            nav.navigate(Routes.SCHEDULE) { popUpTo(Routes.LOGIN) { inclusive = true } }
+        }
+        compose.onNodeWithText("schedule").assertExists()
+        compose.runOnIdle {
+            AlertNavigation.requestFrom(Intent().putExtra(AlertNotifier.EXTRA_ROUTE, Routes.GRADES))
+        }
+        compose.onNodeWithText("grades").assertExists()
+        compose.runOnIdle { assertEquals(null, AlertNavigation.pendingRoute.value) }
+    }
 
     @Test
     fun expiredSessionDiscardsSavedProfileAndAnnouncementViewModels() {

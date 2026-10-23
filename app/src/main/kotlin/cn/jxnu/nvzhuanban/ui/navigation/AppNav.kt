@@ -252,20 +252,7 @@ fun AppNav() {
         }
     }
 
-    // 「出分 / 考试变更」通知点进来时的一次性跳转：MainActivity 把路由塞进 AlertNavigation，
-    // 这里等 NavHost 组合完成后再消费。登录页没有可跳的目标（跳过去也是被踢回来），
-    // 直接丢掉 —— 用户登录后从「我的」自己进成绩页。
-    val pendingAlertRoute by AlertNavigation.pendingRoute.collectAsStateWithLifecycle()
-    LaunchedEffect(pendingAlertRoute, startDestination) {
-        val route = pendingAlertRoute ?: return@LaunchedEffect
-        AlertNavigation.consume()
-        if (startDestination == Routes.LOGIN) return@LaunchedEffect
-        // 会话过期被踢到登录页后再点通知：这时 startDestination 仍是 SCHEDULE，
-        // 直接跳业务页只会弹一个「登录已过期」，还是丢给用户登录后自己进。
-        if (nav.currentBackStackEntry?.destination?.route == Routes.LOGIN) return@LaunchedEffect
-        if (nav.currentBackStackEntry?.destination?.route == route) return@LaunchedEffect
-        nav.navigate(route)
-    }
+    AlertNavigationEffect(nav, authState)
 
     // expiredSignal 是进程级、只增不减的计数器；Activity 重建后的新 Composition 会带着
     // 历史值重新执行 LaunchedEffect。若直接判 `> 0`，一次真实过期之后的任何一次重建

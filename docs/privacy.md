@@ -8,6 +8,7 @@
 - 自动登录凭据：仅在用户勾选“下次自动登录”时保存，使用 Android Keystore + EncryptedSharedPreferences 加密。
 - 安装标识：随机生成的 installation UUID，用于生成 CAS 需要的 `fpVisitorId`，不读取 `ANDROID_ID` 等硬件标识。
 - 课表周次修正、主题设置、头像开关、通知已读锚点、widget 快照：保存在本机。
+- 成绩与考试提醒：本机保存上次检查的成绩/考试指纹（含分数、考场、座位等字段）及待送达的考试提醒，用于识别变化和安排闹钟；退出登录会清除。
 
 ## 不会做的事
 
@@ -20,7 +21,7 @@
 
 - 在应用内退出登录会清除当前登录会话、已保存的自动登录凭据、派生缓存、通知已读锚点和 widget 快照。
 - Android 系统设置中清除应用数据会删除所有本地配置、cookie、widget 快照和加密凭据。
-- Android cloud backup / device transfer 会排除登录状态、加密凭据、cookie、widget 快照、主题设置、头像偏好、课表周次修正和通知已读锚点。
+- Android cloud backup / device transfer 会排除登录状态、加密凭据、cookie、widget 快照、主题设置、头像偏好、课表周次修正、通知已读锚点，以及成绩/考试提醒的指纹、设置和待送达存档。
 
 ## 发布前检查
 

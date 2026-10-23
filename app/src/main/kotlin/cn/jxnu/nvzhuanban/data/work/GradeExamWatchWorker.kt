@@ -6,7 +6,6 @@ import androidx.work.WorkerParameters
 import cn.jxnu.nvzhuanban.NvzhuanbanApp
 import cn.jxnu.nvzhuanban.data.model.AlertDiff
 import cn.jxnu.nvzhuanban.data.model.Exam
-import cn.jxnu.nvzhuanban.data.model.ExamReminderPlan
 import cn.jxnu.nvzhuanban.data.model.Grade
 import cn.jxnu.nvzhuanban.data.network.JwcError
 import cn.jxnu.nvzhuanban.data.network.JwcException
@@ -17,7 +16,6 @@ import cn.jxnu.nvzhuanban.data.storage.AlertCheckResult
 import cn.jxnu.nvzhuanban.data.storage.AlertKind
 import cn.jxnu.nvzhuanban.data.storage.AlertPrefs
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 /**
  * 后台周期检查「有没有新出分 / 考试有没有变」，顺带把「考前一天提醒」的闹钟排好。
@@ -107,8 +105,7 @@ class GradeExamWatchWorker(
 
     /** 每次拉到考试列表都整表重排闹钟：考试改期/撤销后旧闹钟必须跟着消失。 */
     private fun syncExamReminders(exams: List<Exam>) {
-        val days = ExamReminderPlan.plan(exams, LocalDateTime.now())
-        ExamReminderScheduler.sync(applicationContext, days)
+        ExamReminderScheduler.sync(applicationContext, exams)
     }
 
     private fun classify(outcomes: List<kotlin.Result<*>>): AlertCheckResult {

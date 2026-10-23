@@ -1,6 +1,7 @@
 package cn.jxnu.nvzhuanban.data.model
 
-import kotlin.math.roundToInt
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 /**
  * 一门已结课课程的成绩。
@@ -45,5 +46,6 @@ data class SemesterSummary(
     val count: Int = grades.size
 }
 
-/** 江师大学分都是整数，UI 显示去掉小数位节约空间；用 roundToInt 兜底浮点累加的精度抖动 */
-internal fun Float.formatCredit(): String = roundToInt().toString()
+/** 学分最多显示两位小数，保留半学分等有效小数，同时消除累加/动画的浮点噪声和末尾零。 */
+internal fun Float.formatCredit(): String =
+    BigDecimal(toString()).setScale(2, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
