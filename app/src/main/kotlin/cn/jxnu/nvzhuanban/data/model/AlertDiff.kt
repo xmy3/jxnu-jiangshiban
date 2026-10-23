@@ -43,7 +43,7 @@ object AlertDiff {
         grades.distinctBy { it.id }.associate { it.id to gradeFingerprint(it) }
 
     fun examFingerprints(exams: List<Exam>): Map<String, String> =
-        exams.distinctBy { it.id }.associate { it.id to examFingerprint(it) }
+        exams.distinctBy(::examKey).associate { examKey(it) to examFingerprint(it) }
 
     /** 新出现的课程 = 出分；同一门课指纹变了 = 成绩被修改 / 补考出分。 */
     fun grades(known: Map<String, String>, current: List<Grade>): AlertChange<Grade> =
@@ -51,7 +51,18 @@ object AlertDiff {
 
     /** 新出现的考试 = 教务新排的；指纹变了 = 改期 / 换考场 / 换座位。 */
     fun exams(known: Map<String, String>, current: List<Exam>): AlertChange<Exam> =
-        diff(known, current, { it.id }, ::examFingerprint)
+        diff(normalizeExamKeys(known), current, ::examKey, ::examFingerprint)
+
+    private fun examKey(exam: Exam): String =
+        if (exam.courseCode.isNotBlank()) "course:${exam.courseCode}" else "id:${exam.id}"
+
+    // 旧版本的基线 key 是「课程号-完整时间」，升级后仍需识别，避免整批误报新增。
+    private val legacyExamKey = Regex("""^(.+)-\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$""")
+
+    private fun normalizeExamKeys(known: Map<String, String>): Map<String, String> =
+        known.mapKeys { (key, _) ->
+            legacyExamKey.matchEntire(key)?.groupValues?.get(1)?.let { "course:$it" } ?: key
+        }
 
     private fun <T> diff(
         known: Map<String, String>,

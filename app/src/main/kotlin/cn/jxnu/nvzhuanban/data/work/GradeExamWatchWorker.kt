@@ -58,12 +58,12 @@ class GradeExamWatchWorker(
 
         // 只开考前一天提醒时不必拉成绩：少一个请求，也少一次"成绩被别人的刷新覆盖"的可能
         if (watchChanges) {
-            val grades = runCatching { GradeRepository.instance.refresh() }.also(outcomes::add)
+            val grades = runCatching { GradeRepository.instance.refreshForAlerts() }.also(outcomes::add)
             grades.getOrNull()?.let { applyGrades(it.semesters.flatMap { semester -> semester.grades }) }
         }
 
         if (watchChanges || remindExams) {
-            val exams = runCatching { ExamRepository.instance.refresh() }.also(outcomes::add)
+            val exams = runCatching { ExamRepository.instance.refreshForAlerts() }.also(outcomes::add)
             exams.getOrNull()?.let { all ->
                 if (watchChanges) applyExamChanges(all)
                 if (remindExams) syncExamReminders(all)

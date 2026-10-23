@@ -160,11 +160,16 @@ class AuthRepository private constructor(
         // 否则用户要冷启一次 App 才恢复提醒。WorkManager 首次 getInstance 会开库，切 IO。
         // runNow：刚拿到有效会话，立刻补跑一次 —— 否则「考前一天提醒」要等下一次周期唤醒
         // （最多 4 小时）才排闹钟，考前那晚才登录的学生就错过了。
-        withContext(Dispatchers.IO) { runCatching { AlertScheduler.sync(appContext, runNow = true) } }
-        val profile = runCatching { UserDefaultPage.fetchAndParse(username) }
-            .getOrNull()
-            ?: UserDefaultPage.parse(username, "")
-        _state.value = AuthState.LoggedIn(profile)
+        completeLogin(
+            state = _state,
+            loadProfile = {
+                runCatching { UserDefaultPage.fetchAndParse(username) }.getOrNull()
+                    ?: UserDefaultPage.parse(username, "")
+            },
+            scheduleAlerts = {
+                withContext(Dispatchers.IO) { runCatching { AlertScheduler.sync(appContext, runNow = true) } }
+            },
+        )
     }
 
     /**

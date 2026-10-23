@@ -5,10 +5,16 @@ import cn.jxnu.nvzhuanban.data.network.JwcClient
 import cn.jxnu.nvzhuanban.data.network.JxnuUrls
 import cn.jxnu.nvzhuanban.data.network.ParseWarnings
 import cn.jxnu.nvzhuanban.data.network.pages.GradePage
+import cn.jxnu.nvzhuanban.data.network.pages.PageParse
+import cn.jxnu.nvzhuanban.data.network.pages.requireComplete
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class GradeRepository {
+class GradeRepository(
+    private val fetchHtml: suspend () -> String = {
+        JwcClient.getHtmlAuth(JxnuUrls.PAGE_GRADE, "成绩页返回空响应")
+    },
+) {
 
     /**
      * 内存缓存：成绩页一次性返回所有学期，反复刷无意义。多个调用方共享同一份解析结果
@@ -23,12 +29,14 @@ class GradeRepository {
         cached ?: fetchNow().also { cached = it }
     }
 
-    private suspend fun fetchNow(): GradePage.Parsed {
-        val html = JwcClient.getHtmlAuth(JxnuUrls.PAGE_GRADE, "成绩页返回空响应")
+    private suspend fun fetchNow(): GradePage.Parsed = fetchPage().value
+
+    private suspend fun fetchPage(): PageParse<GradePage.Parsed> {
+        val html = fetchHtml()
         val page = GradePage.parsePage(html)
         // 只在真正拉网络时上报；缓存命中不重复弹同一句告警
         page.warnings.forEach(ParseWarnings::report)
-        return page.value
+        return page
     }
 
     suspend fun getAllSemesters(): List<SemesterSummary> = fetchAll().semesters
@@ -36,6 +44,10 @@ class GradeRepository {
     suspend fun refresh(): GradePage.Parsed = mutex.withLock {
         cached = null
         fetchNow().also { cached = it }
+    }
+
+    suspend fun refreshForAlerts(): GradePage.Parsed = mutex.withLock {
+        fetchPage().requireComplete().also { cached = it }
     }
 
     /**

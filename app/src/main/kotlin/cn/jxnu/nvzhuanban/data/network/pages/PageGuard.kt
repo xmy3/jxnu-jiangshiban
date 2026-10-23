@@ -105,3 +105,10 @@ data class PageParse<out T>(
     val value: T,
     val warnings: List<String> = emptyList(),
 )
+
+internal fun <T> PageParse<T>.requireComplete(): T {
+    if (warnings.isNotEmpty()) {
+        throw JwcException(JwcError.Decode(warnings.joinToString("；")))
+    }
+    return value
+}

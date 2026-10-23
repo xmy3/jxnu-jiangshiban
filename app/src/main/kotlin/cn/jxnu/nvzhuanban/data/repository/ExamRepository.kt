@@ -5,6 +5,8 @@ import cn.jxnu.nvzhuanban.data.network.JwcClient
 import cn.jxnu.nvzhuanban.data.network.JxnuUrls
 import cn.jxnu.nvzhuanban.data.network.ParseWarnings
 import cn.jxnu.nvzhuanban.data.network.pages.ExamPage
+import cn.jxnu.nvzhuanban.data.network.pages.PageParse
+import cn.jxnu.nvzhuanban.data.network.pages.requireComplete
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -17,7 +19,11 @@ import kotlinx.coroutines.sync.withLock
  *
  * 课表页的"7 天内考试横幅"也复用同一份缓存，不会因此多发一次 HTTP。
  */
-class ExamRepository {
+class ExamRepository(
+    private val fetchHtml: suspend () -> String = {
+        JwcClient.getHtmlAuth(JxnuUrls.PAGE_EXAM, "考试页返回空响应")
+    },
+) {
 
     @Volatile
     private var cached: List<Exam>? = null
@@ -36,17 +42,23 @@ class ExamRepository {
         fetchNow().also { cached = it }
     }
 
+    suspend fun refreshForAlerts(): List<Exam> = mutex.withLock {
+        fetchPage().requireComplete().also { cached = it }
+    }
+
     /** 退出登录时清空内存缓存。**无锁**（`@Volatile cached`），避免 repo.mutex ⇄ authMutex 跨锁死锁——见 GradeRepository.clearCache。 */
     fun clearCache() {
         cached = null
     }
 
-    private suspend fun fetchNow(): List<Exam> {
-        val html = JwcClient.getHtmlAuth(JxnuUrls.PAGE_EXAM, "考试页返回空响应")
+    private suspend fun fetchNow(): List<Exam> = fetchPage().value
+
+    private suspend fun fetchPage(): PageParse<List<Exam>> {
+        val html = fetchHtml()
         val page = ExamPage.parsePage(html)
         // 只在真正拉网络时上报；缓存命中不重复弹同一句告警
         page.warnings.forEach(ParseWarnings::report)
-        return page.value
+        return page
     }
 
     companion object {
